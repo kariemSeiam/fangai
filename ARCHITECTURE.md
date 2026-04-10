@@ -543,7 +543,7 @@ Open a pull request with:
 
 ## Development Setup
 
-Canonical tree: **`fang/`** in [`kariemSeiam/fangai`](https://github.com/kariemSeiam/fangai). Specs and roadmap: **`../spec/README.md`**.
+Canonical tree: **repository root** in [`kariemSeiam/fangai`](https://github.com/kariemSeiam/fangai). Specs and roadmap: **`../spec/README.md`**.
 
 ```bash
 pnpm install

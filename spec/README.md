@@ -32,15 +32,15 @@ This folder is the **single place** for vision, corrected assumptions, architect
 
 **Canonical implementation root (Fang monorepo)**
 
-- [`../fang/README.md`](../fang/README.md) — **active** `pnpm` workspace; develop **here**; `playgorund/` remains reference snapshots
-- [`../fang/docs/FANG-SPEC.md`](../fang/docs/FANG-SPEC.md) — **implementation draft** (routes, `FangAgentExecutor`, adapters); keep in sync with code in the same PRs that change behavior
-- [`../fang/docs/PUBLISHING.md`](../fang/docs/PUBLISHING.md) — **`@fangai/*`** npm checklist, package table, `pnpm publish -r` (pairs with [11](./11-DISTRIBUTION-AND-PUBLISHING.md))
-- [`../fang/packages/client`](../fang/packages/client) — **`@fangai/client`** orchestrator-facing API (`FangClient`, `discoverRunningAgents`)
+- [`../README.md`](../README.md) — **active** `pnpm` workspace; develop **here**; `playgorund/` remains reference snapshots
+- [`../docs/FANG-SPEC.md`](../docs/FANG-SPEC.md) — **implementation draft** (routes, `FangAgentExecutor`, adapters); keep in sync with code in the same PRs that change behavior
+- [`../docs/PUBLISHING.md`](../docs/PUBLISHING.md) — **`@fangai/*`** npm checklist, package table, `pnpm publish -r` (pairs with [11](./11-DISTRIBUTION-AND-PUBLISHING.md))
+- [`../packages/client`](../packages/client) — **`@fangai/client`** orchestrator-facing API (`FangClient`, `discoverRunningAgents`)
 
 **Related repo artifacts**
 
 - `playgorund/COMPARISON.md` — detailed three-way code comparison (keep in sync when architecture target changes); links back to this spec
-- `playgorund/a2a-cli` — historical snapshot; **shipping source** is [`../fang/`](../fang/)
+- `playgorund/a2a-cli` — historical snapshot; **shipping source** is the monorepo at [`../README.md`](../README.md)
 - `playgorund/a2a-cli-01` — reference for **persistent** Pi RPC bridging
 - `playgorund/fang` — reference for **ProcessManager**, **Detector**, rich adapter interfaces (Hono server is **not** the target)
 - `playgorund/pi-mono`, `playgorund/opencode` — optional **shallow clones** for reading upstream RPC / CLI (see [15-UPSTREAM-PI-AND-OPencode.md](./15-UPSTREAM-PI-AND-OPencode.md))

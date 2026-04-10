@@ -28,7 +28,7 @@ You typically also install one or more **`@fangai/adapter-*`** packages and a **
 
 ## Docs
 
-- **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/FANG-SPEC.md)** — behavior and surfaces
-- **[`ARCHITECTURE.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/ARCHITECTURE.md)** — diagrams and SDK wiring
-- **[`docs/ADAPTERS.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/ADAPTERS.md)** — writing adapters
-- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/PUBLISHING.md)** — npm publish checklist (`@fangai/*`)
+- **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/FANG-SPEC.md)** — behavior and surfaces
+- **[`ARCHITECTURE.md`](https://github.com/kariemSeiam/fangai/blob/main/ARCHITECTURE.md)** — diagrams and SDK wiring
+- **[`docs/ADAPTERS.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/ADAPTERS.md)** — writing adapters
+- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/PUBLISHING.md)** — npm publish checklist (`@fangai/*`)

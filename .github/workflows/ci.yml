@@ -26,14 +26,12 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
-          cache-dependency-path: fang/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: fang
         run: pnpm install --frozen-lockfile
 
       - name: Verify (build, test, lint)
-        working-directory: fang
         run: pnpm run release:verify
 
   docker-build:
@@ -42,9 +40,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build pi Dockerfile
-        working-directory: fang
         run: docker build -f Dockerfile.pi -t fang-pi:test .
 
       - name: Build claude Dockerfile
-        working-directory: fang
         run: docker build -f Dockerfile.claude -t fang-claude:test .

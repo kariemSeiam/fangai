@@ -1,6 +1,6 @@
 # @fangai/pi
 
-**Pi** coding agent support for [Fang](https://github.com/kariemSeiam/fangai/blob/main/fang/README.md) — the CLI → A2A bridge.
+**Pi** coding agent support for [Fang](https://github.com/kariemSeiam/fangai/blob/main/README.md) — the CLI → A2A bridge.
 
 ## When you need this
 
@@ -24,8 +24,8 @@ fang wrap "pi --mode rpc" --port 3001 --name pi-agent
 
 ## See also
 
-- **[`docs/ADAPTERS.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/ADAPTERS.md)** — adapter contract and registry
-- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/PUBLISHING.md)** — publishing `@fangai/*`
+- **[`docs/ADAPTERS.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/ADAPTERS.md)** — adapter contract and registry
+- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/PUBLISHING.md)** — publishing `@fangai/*`
 
 ## Dev
 

@@ -5,10 +5,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kariemSeiam/fangai.git",
-    "directory": "fang"
+    "url": "https://github.com/kariemSeiam/fangai.git"
   },
-  "homepage": "https://github.com/kariemSeiam/fangai/blob/main/fang/README.md",
+  "homepage": "https://github.com/kariemSeiam/fangai/blob/main/README.md",
   "bugs": {
     "url": "https://github.com/kariemSeiam/fangai/issues"
   },

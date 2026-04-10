@@ -38,7 +38,7 @@ Use before tagging **`@fangai/*`** or publishing the **`fang`** CLI. Adjust for 
 ## 4. Publish hygiene
 
 - [ ] Version bump aligned across workspace packages (see [11-DISTRIBUTION-AND-PUBLISHING.md](./11-DISTRIBUTION-AND-PUBLISHING.md))
-- [ ] Update [`../fang/CHANGELOG.md`](../fang/CHANGELOG.md) — fold **`[Unreleased]`** into a new **`## [x.y.z] — YYYY-MM-DD`** section (or add bullets under the version you are shipping); keep **`[Unreleased]`** as empty placeholders for the next cycle
+- [ ] Update [`../CHANGELOG.md`](../CHANGELOG.md) — fold **`[Unreleased]`** into a new **`## [x.y.z] — YYYY-MM-DD`** section (or add bullets under the version you are shipping); keep **`[Unreleased]`** as empty placeholders for the next cycle
 - [ ] GitHub release notes — **Spec alignment** bullets for `@a2a-js/sdk` (can mirror changelog)
 - [ ] npm provenance / trusted publishing when wired (optional)
 
