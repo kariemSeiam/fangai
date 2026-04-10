@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`README.md`:** Footer nav links **[Changelog](CHANGELOG.md)**. **`CONTRIBUTING.md`:** **Documentation map** includes **`CHANGELOG.md`**. **`spec/16-RELEASE-CHECKLIST.md`:** Changelog item describes folding **`[Unreleased]`** vs adding a dated section.
 - **`packages/core`:** **`hostDetect.test.ts`** uses a **15s** Vitest timeout — **`detectHostAgents()`** can exceed the default **5s** on slow or busy machines.
-- **Repository:** Public home **[github.com/kariemSeiam/fangai](https://github.com/kariemSeiam/fangai)** — `repository` / **`homepage`** / **`bugs`** in **`package.json`** files; GitHub links in package READMEs; clone/install docs use **`fang/`** workspace; repo layout adds root **`README.md`** beside **`fang/`** + **`spec/`**.
+- **Repository layout:** **`@fangai/*`** pnpm workspace lives at the **repository root** (alongside **`spec/`**); clone/install docs use **`cd fangai`** after **`git clone`**; **`package.json`** **`repository`** / **`homepage`** / **`bugs`** and package README GitHub URLs updated accordingly.
 
 ## [0.1.0] — 2026-04-10
 
@@ -38,7 +38,7 @@ Baseline for the first **`@fangai/*`** npm publish (pre-release until tagged).
 - **`ARCHITECTURE.md`:** Removed obsolete **`/tasks/send`** sample; **Implementation reference** and **A2A surfaces** match **`@a2a-js/sdk`** + **`FangAgentExecutor`**; task lifecycle diagram uses **`message/send`**.
 - **Docs / metadata:** **`README`** “Raw HTTP” uses **`POST /a2a`**; architecture tree lists real **`docs/`** files and packages (no bogus **`examples/`**); CLI reference lists **`detect`** (no separate **`card`** command). **`docs/ADAPTERS.md`** integration snippet; **`docs/A2A-COMPLIANCE.md`** mount path wording. **`buildAgentCard`** metadata uses **`fang_version`** only (drops duplicate **`a2a_cli_version`**).
 - **`docs/FANG-SPEC.md`:** API key, **`host`**, OpenCode bridge, **`fang detect`**, Codex adapter; **`docs/PUBLISHING.md`** “See also” links.
-- **`spec/README.md`:** links **`../fang/docs/FANG-SPEC.md`**; playground note points at shipping **`../fang/`**.
+- **`spec/README.md`:** links **`../docs/FANG-SPEC.md`**; playground note points at shipping monorepo at repo root.
 - **Documentation pass (navigation + npm):** **`README`** hero/footer links **`ARCHITECTURE`**, **`FANG-SPEC`**, **`DEPLOYMENT`**; pre-release scope blurb; v0.1 roadmap includes **`send`** / **`detect`**; ASCII tree matches repo. **See also** / **Documentation map** tables across **`ARCHITECTURE`**, **`docs/*`** (`FANG-SPEC`, **`ADAPTERS`**, **`A2A-COMPLIANCE`**, **`DEPLOYMENT`**, **`PUBLISHING`**), **`CONTRIBUTING`**, **`spec/README`**, **`spec/11`**; **`docs/PUBLISHING`** package table + README links + **`npm pack`** / **`files`** note; **`docs/DEPLOYMENT`** pre-release from-source note; **`A2A-COMPLIANCE`** JSON-RPC **`curl`** uses **`POST /a2a`**. **Package READMEs:** **`@fangai/cli`**, **`@fangai/core`**, **`@fangai/client`**, **`@fangai/pi`** (npm + GitHub links). **Root `package.json`:** **`repository`**, **`homepage`**, **`bugs`**; remove unused **`@fangai/cli`** devDependency; keywords **`codex`**. **`@fangai/cli`** / **`@fangai/core`** **`package.json`** keywords for discovery.
 
 ### Spec alignment

@@ -49,7 +49,7 @@ Fang adapters for **Pi** and **OpenCode** must track these repositories as **pri
 
 After clone (shallow is enough for source reading):
 
-- `playgorund/pi-mono`
-- `playgorund/opencode` (default branch in upstream is often **`dev`**; pin a tag in research notes when you cite behavior)
+- [pi-mono](https://github.com/badlogic/pi-mono) (local clone path is up to you)
+- [opencode](https://github.com/anomalyco/opencode) (default branch upstream is often **`dev`**; pin a tag in research notes when you cite behavior)
 
 These directories may be **gitignored** in your fork if you prefer not to vendor upstream; the spec links remain the durable reference.

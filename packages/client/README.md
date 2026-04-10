@@ -15,6 +15,6 @@ API surface: `src/index.ts` (`callJsonRpc`, `streamMessage`, re-exported `AgentC
 
 ## Docs
 
-- **[Monorepo `README.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/README.md)** — orchestration context, `fang send`, JSON-RPC
-- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/PUBLISHING.md)** — installing `@fangai/client` from npm with the rest of the scope
-- **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/FANG-SPEC.md)** — HTTP surfaces and auth headers
+- **[Monorepo `README.md`](https://github.com/kariemSeiam/fangai/blob/main/README.md)** — orchestration context, `fang send`, JSON-RPC
+- **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/PUBLISHING.md)** — installing `@fangai/client` from npm with the rest of the scope
+- **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/FANG-SPEC.md)** — HTTP surfaces and auth headers

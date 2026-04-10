@@ -1,14 +1,14 @@
 # Architecture target (production)
 
-**Implementation home:** **`products/fang/fang/`** — the live monorepo (see `fang/README.md`). **`playgorund/a2a-cli`** is kept in sync as a reference copy; prefer editing **`fang/`** for new work.
+**Implementation home:** **[repository root](https://github.com/kariemSeiam/fangai)** in the public repo **[`kariemSeiam/fangai`](https://github.com/kariemSeiam/fangai)** (`pnpm` workspace; see [`README.md`](../README.md)).
 
-This is the **intended** end state after merging lessons from three prototypes:
+This is the **intended** end state after merging lessons from earlier internal prototypes:
 
-| Source | Take |
+| Prototype lineage | Take |
 |--------|------|
-| **v3 `playgorund/a2a-cli`** | Express + `@a2a-js/sdk`, `@fangai/*` packages, adapter packages, CI/Docker/docs |
-| **v1 `playgorund/a2a-cli-01`** | **Persistent** `BridgeExecutor` path for Pi `--mode rpc` (long-lived process, multiplex tasks) |
-| **v2 `playgorund/fang`** | **`ProcessManager`** (readline, SIGTERM→SIGKILL, timeouts), **`Detector`** (`which` + version), rich **`AgentAdapter`** / multi-event **`parseLine`** |
+| **v3 (Express + SDK stack)** | Express + `@a2a-js/sdk`, `@fangai/*` packages, adapter packages, CI/Docker/docs |
+| **v1** | **Persistent** executor path for Pi `--mode rpc` (long-lived process, multiplex tasks) |
+| **v2** | **`ProcessManager`** (readline, SIGTERM→SIGKILL, timeouts), **`Detector`** (`which` + version), rich **`AgentAdapter`** / multi-event **`parseLine`** |
 
 **Drop:** v2’s hand-rolled Hono A2A server — use SDK handlers instead.
 

@@ -25,9 +25,9 @@ Binaries: **`fang`** and compat alias **`a2a-cli`**.
 
 | Doc | Notes |
 | --- | --- |
-| **[Monorepo `README.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/README.md)** | Install, raw HTTP, deployment, roadmap |
-| **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/PUBLISHING.md)** | `@fangai` scope, `pnpm publish`, tarball checks |
-| **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/docs/FANG-SPEC.md)** | Technical behavior (routes, executor, CLI) |
-| **[`CONTRIBUTING.md`](https://github.com/kariemSeiam/fangai/blob/main/fang/CONTRIBUTING.md)** | Layout, tests, how to contribute |
+| **[Monorepo `README.md`](https://github.com/kariemSeiam/fangai/blob/main/README.md)** | Install, raw HTTP, deployment, roadmap |
+| **[`docs/PUBLISHING.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/PUBLISHING.md)** | `@fangai` scope, `pnpm publish`, tarball checks |
+| **[`docs/FANG-SPEC.md`](https://github.com/kariemSeiam/fangai/blob/main/docs/FANG-SPEC.md)** | Technical behavior (routes, executor, CLI) |
+| **[`CONTRIBUTING.md`](https://github.com/kariemSeiam/fangai/blob/main/CONTRIBUTING.md)** | Layout, tests, how to contribute |
 
 Links follow `repository.directory` in this package’s `package.json`.

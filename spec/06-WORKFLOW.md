@@ -49,7 +49,7 @@ Follow **00-RESEARCH-PROGRAM.md**: every spike produces a row update, ADR, or fi
 
 ## Daily developer loop (suggested)
 
-Canonical repo root: **`products/fang/fang/`** (monorepo).
+Canonical workspace: **[repository root](https://github.com/kariemSeiam/fangai)** in **[`kariemSeiam/fangai`](https://github.com/kariemSeiam/fangai)**.
 
 ```text
 git pull

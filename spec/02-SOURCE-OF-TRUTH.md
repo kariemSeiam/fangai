@@ -29,7 +29,7 @@ The ecosystem gap is not “zero clients” — **`@a2a-js/sdk` includes client 
 
 The blueprint’s Tier-3 row for Aider is **out of date** for this codebase:
 
-- `playgorund/a2a-cli` implements **`aider --json`** (structured lines).
+- This codebase implements **`aider --json`** (structured lines) via the aider adapter.
 - Example configs use `aider … --json-output` / `--json` depending on convention.
 
 **Rule:** Docs and tier tables must say **structured mode when available**, **text fallback** when not.

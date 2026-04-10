@@ -8,7 +8,7 @@ First: thank you. Every adapter, bug fix, and doc improvement makes the bridge s
 
 ```bash
 git clone https://github.com/kariemSeiam/fangai.git
-cd fangai/fang
+cd fangai
 pnpm install
 pnpm -r build
 pnpm run release:verify
@@ -21,7 +21,7 @@ pnpm run release:verify
 ## Project Structure
 
 ```
-fang/                   # repo: github.com/kariemSeiam/fangai — directory `fang/`
+repo root               # github.com/kariemSeiam/fangai — pnpm workspace at repository root
 ├── packages/
 │   ├── core/           ← FangServer, TaskManager, adapters registry
 │   ├── client/         ← @fangai/client

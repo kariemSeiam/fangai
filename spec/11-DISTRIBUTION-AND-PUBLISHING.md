@@ -37,14 +37,14 @@
 
 ## Changelog
 
-Maintain **[`fang/CHANGELOG.md`](../fang/CHANGELOG.md)** in the monorepo root; copy **Spec alignment** bullets into GitHub release notes when tagging.
+Maintain **[`CHANGELOG.md`](../CHANGELOG.md)** in the monorepo root; copy **Spec alignment** bullets into GitHub release notes when tagging.
 
-**Operational steps** (command sequence, package table with README links, `npm pack` notes): **[`fang/docs/PUBLISHING.md`](../fang/docs/PUBLISHING.md)**.
+**Operational steps** (command sequence, package table with README links, `npm pack` notes): **[`docs/PUBLISHING.md`](../docs/PUBLISHING.md)**.
 
 ## Checklist before `npm publish`
 
 - [ ] **`pnpm run release:verify`** green (matches CI), or equivalent `build` + `test` + **`@fangai/core` lint**
-- [ ] **[`fang/CHANGELOG.md`](../fang/CHANGELOG.md)** updated (`[Unreleased]` → version section on tag)
+- [ ] **[`CHANGELOG.md`](../CHANGELOG.md)** updated (`[Unreleased]` → version section on tag)
 - [ ] Spec alignment bullets in release notes (`00` Tier-2)
 - [ ] README quickstart matches published package names
 - [ ] No accidental `publishConfig` to wrong registry
