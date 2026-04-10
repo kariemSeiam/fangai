@@ -35,7 +35,7 @@ Phases are **sequential** unless marked parallel. Each phase ends with **mergeab
 - Single long-lived child; task demux; **cancel/abort** path mapped where Pi supports it.
 - Tests with **mocked** stdin/stdout JSONL (fixtures).
 
-**Status (2026-04):** Implemented in **`products/fang/fang/packages/core/src/FangAgentExecutor.ts`**: `BaseAdapter.executionMode`, `PiAdapter` → `persistent`, `splitCli()` for argv, persistent shell + stdout routing, abort on cancel. Integration tests against real `pi` still manual.
+**Status (2026-04):** Implemented in [`packages/core/src/FangAgentExecutor.ts`](https://github.com/kariemSeiam/fangai/blob/main/packages/core/src/FangAgentExecutor.ts): `BaseAdapter.executionMode`, `PiAdapter` → `persistent`, `splitCli()` for argv, persistent shell + stdout routing, abort on cancel. Integration tests against real `pi` still manual.
 
 **Exit:** `fang wrap "pi --mode rpc"` on v3 matches v1 behavior for basic send/stream scenarios.
 
