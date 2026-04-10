@@ -1,0 +1,50 @@
+{
+  "name": "fang-monorepo",
+  "private": true,
+  "description": "Fang — CLI-to-A2A bridge (@fangai/*). Wrap coding agents as A2A servers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kariemSeiam/fangai.git",
+    "directory": "fang"
+  },
+  "homepage": "https://github.com/kariemSeiam/fangai/blob/main/fang/README.md",
+  "bugs": {
+    "url": "https://github.com/kariemSeiam/fangai/issues"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r build && pnpm -r test",
+    "test:only": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "clean": "pnpm -r clean",
+    "dev": "pnpm -r --parallel dev",
+    "release:verify": "pnpm -r build && pnpm -r test && pnpm --filter @fangai/core lint"
+  },
+  "devDependencies": {
+    "eslint": "^10.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "keywords": [
+    "fang",
+    "fangai",
+    "a2a",
+    "agent-to-agent",
+    "mcp",
+    "cli",
+    "coding-agent",
+    "orchestration",
+    "multi-agent",
+    "pi",
+    "aider",
+    "claude-code",
+    "codex",
+    "opencode"
+  ]
+}

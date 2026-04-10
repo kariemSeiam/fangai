@@ -1,0 +1,53 @@
+{
+  "name": "@fangai/core",
+  "version": "0.1.0",
+  "description": "Fang core — A2A HTTP/SSE server bridging stdin/stdout CLI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "prepublishOnly": "tsc"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.13",
+    "@opencode-ai/sdk": "^1",
+    "express": "^4.21.0",
+    "uuid": "^10.0.0",
+    "which": "^6.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "@types/which": "^3.0.4",
+    "eslint": "^10.0.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "a2a",
+    "agent",
+    "agent-to-agent",
+    "cli",
+    "express",
+    "mcp",
+    "orchestration"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kariemSeiam/fangai.git",
+    "directory": "fang/packages/core"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

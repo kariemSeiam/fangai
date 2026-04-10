@@ -1,0 +1,5 @@
+# Optional local playground snapshots (not part of this repo)
+playgorund/
+
+.DS_Store
+Thumbs.db
