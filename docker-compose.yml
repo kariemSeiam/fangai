@@ -1,72 +1,38 @@
-# Fang — sample multi-agent fleet (@fangai/cli)
-#
-# Usage:
-#   docker compose up -d
-#   curl http://localhost:3001/.well-known/agent-card.json
-#   fang discover
-#
-# Environment:
-#   Create .env with your API keys:
-#     ZAI_API_KEY=your-key
-#     ANTHROPIC_API_KEY=your-key
-
-version: "3.9"
+version: '3.9'
 
 services:
-  # Cheap, fast daily driver
   pi:
-    build:
-      context: .
-      dockerfile: Dockerfile.pi
-    ports:
-      - "3001:3001"
+    build: .
+    ports: ["3001:3001"]
     environment:
-      - ZAI_API_KEY=${ZAI_API_KEY:-}
-    volumes:
-      - ./project:/home/a2a/project
-    restart: unless-stopped
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: ["node", "--experimental-strip-types", "src/cli.ts", "wrap", "pi --mode rpc", "--port", "3001"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # Expensive, deep thinker
   claude:
-    build:
-      context: .
-      dockerfile: Dockerfile.claude
-    ports:
-      - "3002:3002"
+    build: .
+    ports: ["3002:3002"]
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    volumes:
-      - ./project:/home/a2a/project
-    restart: unless-stopped
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: ["node", "--experimental-strip-types", "src/cli.ts", "wrap", "claude", "--port", "3002"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # Free, local, offline
-  local:
-    build:
-      context: .
-      dockerfile: Dockerfile.ollama
-    ports:
-      - "3003:3003"
-    volumes:
-      - ./project:/home/a2a/project
-      - ollama-data:/home/a2a/.ollama
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-              count: all
-              driver: nvidia
+  aider:
+    build: .
+    ports: ["3003:3003"]
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    command: ["node", "--experimental-strip-types", "src/cli.ts", "wrap", "aider", "--port", "3003"]
 
-volumes:
-  ollama-data:
+  ollama:
+    build: .
+    ports: ["3005:3005"]
+    command: ["node", "--experimental-strip-types", "src/cli.ts", "wrap", "ollama run qwen2.5-coder", "--port", "3005"]
