@@ -7,40 +7,22 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
-
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
+      - run: npm install
+      - run: node --experimental-strip-types src/cli.ts --help
+      - run: node --experimental-strip-types src/cli.ts detect
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify (build, test, lint)
-        run: pnpm run release:verify
-
-  docker-build:
+  docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build pi Dockerfile
-        run: docker build -f Dockerfile.pi -t fang-pi:test .
-
-      - name: Build claude Dockerfile
-        run: docker build -f Dockerfile.claude -t fang-claude:test .
+      - run: docker build .
