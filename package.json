@@ -1,49 +1,26 @@
 {
-  "name": "fang-monorepo",
-  "private": true,
-  "description": "Fang — CLI-to-A2A bridge (@fangai/*). Wrap coding agents as A2A servers.",
+  "name": "fang",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "fang": "src/cli.ts" },
+  "main": "src/index.ts",
+  "description": "Any CLI coding agent. A2A citizen. One command. 🐺",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/kariemSeiam/fangai.git"
-  },
-  "homepage": "https://github.com/kariemSeiam/fangai/blob/main/README.md",
-  "bugs": {
-    "url": "https://github.com/kariemSeiam/fangai/issues"
-  },
+  "keywords": ["a2a", "agent", "cli", "pi", "aider", "claude-code", "codex", "gemini", "coding-agent", "fang"],
   "scripts": {
-    "build": "pnpm -r build",
-    "test": "pnpm -r build && pnpm -r test",
-    "test:only": "pnpm -r test",
-    "lint": "pnpm -r lint",
-    "clean": "pnpm -r clean",
-    "dev": "pnpm -r --parallel dev",
-    "release:verify": "pnpm -r build && pnpm -r test && pnpm --filter @fangai/core lint"
+    "start": "node --experimental-strip-types src/cli.ts",
+    "dev": "node --experimental-strip-types src/cli.ts"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "^0.3.13",
+    "commander": "^13.1.0",
+    "express": "^4.22.1",
+    "which": "^1.0.0",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
-    "eslint": "^10.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
-  },
-  "packageManager": "pnpm@9.15.0",
-  "keywords": [
-    "fang",
-    "fangai",
-    "a2a",
-    "agent-to-agent",
-    "mcp",
-    "cli",
-    "coding-agent",
-    "orchestration",
-    "multi-agent",
-    "pi",
-    "aider",
-    "claude-code",
-    "codex",
-    "opencode"
-  ]
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.17",
+    "@types/which": "^3.0.0"
+  }
 }
