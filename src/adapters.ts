@@ -22,9 +22,39 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as which from 'which';
 import type { AgentAdapter, AgentTask, FangConfig, AdapterEvent, DetectionResult } from './core.ts';
 
 const execFileAsync = promisify(execFile);
+
+// ─── Helpers ────────────────────────────────────────────────────────────
+
+/** Escape special regex characters in a string for use in RegExp. */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Extract a semver-like version string from CLI output. */
+function parseVersion(output: string): string {
+  const match = output.match(/(\d+\.\d+\.\d+(?:[-+.\w]*)?)/);
+  return match ? match[1] : 'unknown';
+}
+
+/** Run `binary --version` and return the parsed version, or 'unknown'. */
+async function detectVersion(binary: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync(binary, ['--version'], { timeout: 5000 });
+    return parseVersion(stdout.trim());
+  } catch {
+    // Fallback: try -v
+    try {
+      const { stdout } = await execFileAsync(binary, ['-v'], { timeout: 5000 });
+      return parseVersion(stdout.trim());
+    } catch {
+      return 'unknown';
+    }
+  }
+}
 
 export class PiAdapter implements AgentAdapter {
   readonly id = 'pi';
@@ -165,13 +195,8 @@ export class PiAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      let version = 'unknown';
-      try {
-        const { stdout } = await execFileAsync(this.binary, ['--version'], { timeout: 5000 });
-        version = stdout.trim().split('\n')[0] || 'unknown';
-      } catch {}
+      const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 1, protocol: 'jsonl-rpc' };
     } catch { return null; }
   }
@@ -231,13 +256,8 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      let version = 'unknown';
-      try {
-        const { stdout } = await execFileAsync(this.binary, ['--version'], { timeout: 5000 });
-        version = stdout.trim().split('\n')[0] || 'unknown';
-      } catch {}
+      const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 1, protocol: 'stream-json' };
     } catch { return null; }
   }
@@ -285,9 +305,9 @@ export class AiderAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      return { binary: this.binary, version: 'unknown', path, tier: 3, protocol: 'text' };
+      const version = await detectVersion(this.binary);
+      return { binary: this.binary, version, path, tier: 3, protocol: 'text' };
     } catch { return null; }
   }
 }
@@ -339,9 +359,9 @@ export class CodexAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      return { binary: this.binary, version: 'unknown', path, tier: 1, protocol: 'jsonl' };
+      const version = await detectVersion(this.binary);
+      return { binary: this.binary, version, path, tier: 1, protocol: 'jsonl' };
     } catch { return null; }
   }
 }
@@ -393,9 +413,9 @@ export class GeminiAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      return { binary: this.binary, version: 'unknown', path, tier: 2, protocol: 'acp' };
+      const version = await detectVersion(this.binary);
+      return { binary: this.binary, version, path, tier: 2, protocol: 'acp' };
     } catch { return null; }
   }
 }
@@ -438,9 +458,9 @@ export class OpenCodeAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const { default: which } = await import('which');
       const path = await which(this.binary);
-      return { binary: this.binary, version: 'unknown', path, tier: 2, protocol: 'json' };
+      const version = await detectVersion(this.binary);
+      return { binary: this.binary, version, path, tier: 2, protocol: 'json' };
     } catch { return null; }
   }
 }
@@ -466,7 +486,16 @@ export class GenericAdapter implements AgentAdapter {
     if (!line.trim()) return [];
     return [{ type: 'text-delta', text: line.trim() }];
   }
-  async detect(): Promise<DetectionResult | null> { return null; }
+  async detect(): Promise<DetectionResult | null> {
+    if (!this.cliCommand) return null;
+    try {
+      const which = await import('which');
+      const [cmd] = this.cliCommand.split(' ');
+      const path = await which(cmd);
+      const version = await detectVersion(cmd);
+      return { binary: cmd, version, path, tier: 3, protocol: 'text' };
+    } catch { return null; }
+  }
 }
 
 // ─── Registry ──────────────────────────────────────────────────────────────
@@ -481,8 +510,14 @@ export const ALL_ADAPTERS: AgentAdapter[] = [
 ];
 
 export function detectAdapter(cli: string): AgentAdapter {
+  // Match binary name bounded by non-hyphen word boundaries or path separators.
+  // e.g. "some-pi-wrapper" should NOT match "pi", but "pi" and "/usr/bin/pi" should.
   for (const adapter of ALL_ADAPTERS) {
-    if (adapter.binary && cli.includes(adapter.binary)) return adapter;
+    if (!adapter.binary) continue;
+    // Allow path separators (/) and start/end of string as boundaries,
+    // but NOT hyphens — they're part of command names.
+    const re = new RegExp('(?:^|[/\\s])' + escapeRegex(adapter.binary) + '(?:$|[/\\s])');
+    if (re.test(cli)) return adapter;
   }
   return new GenericAdapter(cli);
 }
