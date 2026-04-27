@@ -179,8 +179,19 @@ export class ProcessManager {
     this.killTimers.set(taskId, timer);
   }
 
-  killAll(timeout = 5000): void {
-    for (const id of this.processes.keys()) this.kill(id, timeout);
+  async killAll(timeout = 5000): Promise<void> {
+    const ids = [...this.processes.keys()];
+    if (ids.length === 0) return;
+    await Promise.all(ids.map(id => new Promise<void>(resolve => {
+      const proc = this.processes.get(id);
+      if (!proc) { resolve(); return; }
+      const timer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch {}
+        resolve();
+      }, timeout);
+      proc.on('exit', () => { clearTimeout(timer); resolve(); });
+      proc.kill('SIGTERM');
+    })));
   }
 
   has(taskId: string): boolean { return this.processes.has(taskId); }
@@ -208,11 +219,17 @@ export class PersistentProcess {
   private taskQueue: string[] = [];
   /** The currently active task ID (receiving stdout lines). */
   private activeTaskId: string | null = null;
+  /** Crash callback — fired when process exits unexpectedly with pending handlers. */
+  readonly onCrash?: (crashedTaskId: string, remainingCount: number) => void;
 
-  constructor(cmd: string, args: string[], opts: { cwd?: string; env?: Record<string, string> }) {
+  constructor(
+    cmd: string, args: string[], opts: { cwd?: string; env?: Record<string, string> },
+    callbacks?: { onCrash?: (crashedTaskId: string, remainingCount: number) => void },
+  ) {
     this.cmd = cmd;
     this.args = args;
     this.opts = opts;
+    this.onCrash = callbacks?.onCrash;
   }
 
   /**
@@ -281,6 +298,17 @@ export class PersistentProcess {
 
     this.proc.on('exit', () => {
       if (this.detachReader) { this.detachReader(); this.detachReader = null; }
+      // Notify all pending task handlers of the crash
+      if (this.activeTaskId && this.taskHandlers.size > 0) {
+        const crashedId = this.activeTaskId;
+        const remaining = this.taskHandlers.size;
+        // Deliver synthetic error to each handler
+        const errorLine = JSON.stringify({ type: 'error', message: 'Process crashed unexpectedly' });
+        for (const [taskId, handler] of this.taskHandlers) {
+          try { handler(errorLine); } catch { /* swallow handler errors during crash */ }
+        }
+        this.onCrash?.(crashedId, remaining);
+      }
       this.proc = null;
       this.activeTaskId = null;
     });
