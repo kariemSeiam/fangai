@@ -1,8 +1,8 @@
 # Changelog
 
-Notable changes to the Fang monorepo (`@fangai/*`). Workspace packages use aligned semver; bump versions together before `npm publish` (see `spec/11-DISTRIBUTION-AND-PUBLISHING.md`).
+All notable changes to `@fangai/*`. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Workspace packages use aligned semver — bump versions together before publish. See [docs/PUBLISHING.md](docs/PUBLISHING.md) for the full process.
 
 ## [Unreleased]
 

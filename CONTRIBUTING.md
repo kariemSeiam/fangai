@@ -156,15 +156,17 @@ fang wrap "echo test" --port 3001
 
 ### Commit Messages
 
-We use conventional commits:
+We use conventional commits with the wolf emoji:
 
 ```
-feat(adapter): add goose adapter
-fix(core): handle ECONNREFUSED on SSE stream
-docs(readme): add Docker Compose example
-test(pi): add RPC event parsing tests
-chore(deps): update express to 5.x
+🐺 feat(adapter): add goose adapter
+🐺 fix(core): handle ECONNREFUSED on SSE stream
+🐺 docs(readme): add Docker Compose example
+🐺 test(pi): add RPC event parsing tests
+🐺 chore(deps): update express to 5.x
 ```
+
+The wolf is our signature. Every commit howls.
 
 ---
 
