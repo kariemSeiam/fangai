@@ -257,8 +257,13 @@ export class FangAgentExecutor implements AgentExecutor {
       return;
     }
 
+    const timeoutMs = this.config.timeout ? this.config.timeout * 1000 : 300_000;
+
     return new Promise<void>((resolve) => {
-      const finishExecute = () => resolve();
+      let settled = false;
+      const finishExecute = () => {
+        if (!settled) { settled = true; resolve(); }
+      };
 
       this.activePersistent = {
         taskId,
@@ -267,7 +272,7 @@ export class FangAgentExecutor implements AgentExecutor {
         finishExecute,
       };
 
-      void this.runPersistentTurn(text).catch((e) => {
+      const turnPromise = this.runPersistentTurn(text).catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
         if (this.activePersistent?.taskId === taskId) {
           eventBus.publish(makeFailStatus(taskId, contextId, msg));
@@ -277,6 +282,26 @@ export class FangAgentExecutor implements AgentExecutor {
         }
         finishExecute();
       });
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        if (this.activePersistent?.taskId === taskId) {
+          eventBus.publish(
+            makeFailStatus(taskId, contextId, `Persistent mode timed out after ${timeoutMs}ms`)
+          );
+          eventBus.finished();
+          this.activePersistent = null;
+          this.contextByTask.delete(taskId);
+        }
+        if (this.persistentShell) {
+          this.persistentShell.kill("SIGTERM");
+          scheduleKillAfterSigterm(this.persistentShell);
+          this.persistentShell = null;
+        }
+      }, timeoutMs);
+
+      void turnPromise.then(() => clearTimeout(timer));
     });
   }
 
@@ -631,6 +656,11 @@ export class FangAgentExecutor implements AgentExecutor {
         );
       } catch {
         /* ignore */
+      }
+      if (this.persistentShell) {
+        this.persistentShell.kill("SIGTERM");
+        scheduleKillAfterSigterm(this.persistentShell);
+        this.persistentShell = null;
       }
       const ap = this.activePersistent;
       this.activePersistent = null;

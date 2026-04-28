@@ -109,8 +109,6 @@ export abstract class BaseAdapter {
 export { FangServer } from "./FangServer.js";
 export { FangAgentExecutor } from "./FangAgentExecutor.js";
 export { buildSdkAgentCard } from "./sdkAgentCard.js";
-export { TaskManager } from "./TaskManager.js";
-export { SSEEmitter } from "./SSEEmitter.js";
 export { buildAgentCard } from "./AgentCard.js";
 export { detectAdapter } from "./AdapterRegistry.js";
 export {
