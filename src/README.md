@@ -1,8 +1,15 @@
-# `src/` — FangAI Core (Canonical)
+# `src/` — Legacy Single-File Build (Pre-Monorepo)
 
-This is the canonical implementation of FangAI. All development happens here.
+> **Note:** This directory contains the original single-file implementation from Fang's
+> early development. It is preserved for reference but is **not the active codebase**.
+>
+> The live code lives in `packages/` (pnpm monorepo). See root [README.md](../README.md)
+> and [ARCHITECTURE.md](../ARCHITECTURE.md) for the current architecture.
+>
+> If you're looking to add a new adapter, create it under `packages/adapters/<name>/`
+> and follow the guide in [docs/ADAPTERS.md](../docs/ADAPTERS.md).
 
-## Architecture
+## What's Here
 
 | File | Purpose |
 |------|---------|
@@ -14,40 +21,9 @@ This is the canonical implementation of FangAI. All development happens here.
 | `index.ts` | Public API re-exports |
 | `cli.ts` | CLI entry point (commander) |
 
-## Adapters
+## Historical Context
 
-Each adapter implements `AgentAdapter` from `core.ts`:
-- `id` / `binary` / `tier` / `mode` — identity
-- `buildArgs(task, config)` — CLI flags
-- `formatInput(task)` — stdin payload
-- `parseLine(line)` — stdout → `AdapterEvent[]`
-- `detect()` — probe local system for installed binary
-
-Tier system:
-- **Tier 1**: Native JSONL/NDJSON (Pi, Claude, Codex)
-- **Tier 2**: ACP protocol (Gemini)
-- **Tier 3**: Text scraping (Aider, Generic)
-
-## Tests
-
-```bash
-pnpm test
-```
-
-89 tests covering:
-- JSONL reader (LF-only splitting, CRLF stripping, U+2028/U+2029 safety, buffered chunks)
-- ProcessManager (spawn, stderr, exit codes, SIGTERM/SIGKILL, killAll)
-- PersistentProcess (liveness, task routing, crash notification, extension UI auto-response)
-- All 7 adapters (metadata, buildArgs, formatInput, parseLine edge cases)
-- detectAdapter (exact match, path prefixes, false-positive rejection)
-- FangClient (URL normalization, graceful failure)
-
-## Note on `packages/`
-
-The `packages/` directory contains a separate monorepo structure with its own adapter
-implementations. That code is from an earlier iteration and uses a different API
-(`parseOutput` vs `parseLine`, different `BaseAdapter` class). It is kept for
-reference but should not be considered the source of truth.
-
-If you're looking to add a new adapter, edit `src/adapters.ts` following the
-existing patterns. See `PiAdapter` as the gold standard reference.
+This was the initial implementation before the monorepo migration. The adapter API here
+uses `parseLine()` instead of the monorepo's `parseOutput()`, and `AgentAdapter` instead
+of `BaseAdapter`. Tests still run against this code (89 tests) but new development
+should target the `packages/` structure.
