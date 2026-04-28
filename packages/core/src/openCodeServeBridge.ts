@@ -82,11 +82,13 @@ export async function runOpenCodeServeTurn(options: {
   });
 
   const sse = await sdk.event.subscribe();
+  const cleanup = () => { try { sse.stream.return(undefined as any); } catch { /* ignore */ } };
   const created = await sdk.session.create({
     title: `fang-${Date.now()}`,
   });
   const sessionID = created.data?.id;
   if (!sessionID) {
+    cleanup();
     options.onUpdate({
       type: "failed",
       text: "OpenCode session.create returned no session id",
@@ -155,6 +157,7 @@ export async function runOpenCodeServeTurn(options: {
       )
     ),
   ]).catch((e) => {
+    cleanup();
     if (!streamOutcome) {
       options.onUpdate({
         type: "failed",
@@ -162,4 +165,6 @@ export async function runOpenCodeServeTurn(options: {
       });
     }
   });
+
+  cleanup();
 }

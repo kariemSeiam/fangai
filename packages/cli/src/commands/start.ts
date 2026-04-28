@@ -19,11 +19,16 @@ interface ConfigFile {
   >;
 }
 
+interface StartCommandOptions {
+  config: string;
+  background: boolean;
+}
+
 export const startCommand = new Command("start")
   .description("Start all agents from a2a.yaml")
   .option("--config <path>", "Path to config file", "./a2a.yaml")
   .option("--background", "Run as daemon (future)", false)
-  .action(async (options: any) => {
+  .action(async (options: StartCommandOptions) => {
     let configText: string;
     try {
       configText = readFileSync(options.config, "utf-8");

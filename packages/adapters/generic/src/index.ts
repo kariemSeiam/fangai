@@ -9,8 +9,6 @@ import { BaseAdapter, type Task, type TaskUpdate } from "@fangai/core";
  * registered LAST in the adapter registry.
  */
 export class GenericAdapter extends BaseAdapter {
-  private lastLine = "";
-
   formatInput(task: Task): string {
     return task.message + "\n";
   }
@@ -18,7 +16,6 @@ export class GenericAdapter extends BaseAdapter {
   parseOutput(line: string): TaskUpdate | null {
     const clean = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
     if (!clean) return null;
-    this.lastLine = clean;
     return { type: "progress", text: clean };
   }
 
