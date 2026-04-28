@@ -1,36 +1,71 @@
 <div align="center">
 
-```
- (               )         
- )\ )   (     ( /( (       
-(()/(   )\    )\()))\ )    
- /(_)|(((_)( ((_)\\(()/(    
-(_))_|)\ _ )\ _((_)/(_))_  
-| |_  (_)_\(_) \| (_)) __| 
-| __|  / _ \ | .` | | (_ | 
-|_|   /_/ \_\|_|\_|  \___| 
+```text
+ ███████╗███████╗
+ ██╔════╝██╔════╝
+ █████╗  █████╗
+ ██╔══╝  ██╔══╝
+ ██║     ███████╗
+ ╚═╝     ╚══════╝
 ```
 
-**Every CLI agent is an island. Fang builds the bridge.**
+### Every CLI agent is an island. Fang builds the bridge.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
-[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-blue?style=flat-square)](https://github.com/a2aproject/A2A)
-[![Built on @a2a-js/sdk](https://img.shields.io/badge/built%20on-@a2a-js/sdk-green?style=flat-square)](https://www.npmjs.com/package/@a2a-js/sdk)
-[![Node 24](https://img.shields.io/badge/node-24+-purple?style=flat-square)](https://nodejs.org)
+[![A2A Protocol](https://img.shields.io/badge/A2A-Protocol-0A66C2?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjE0IiBmaWxsPSJ3aGl0ZSI+PHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6bS0xIDE3LjkzYy0zLjk1LS40OS03LTMuOTUtNy03LjkzczMuMDUtNy40NCA3LTcuOTN2MTUuODZ6Ii8+PC9zdmc+)](https://github.com/a2aproject/A2A)
+[![npm @fangai/core](https://img.shields.io/badge/npm-@fangai%2Fcore-CB3847?style=flat-square&logo=npm)](https://www.npmjs.com/package/@fangai/core)
+[![Node 24+](https://img.shields.io/badge/node-24+-339933?style=flat-square&logo=node.js)](https://nodejs.org)
+
+<sup>Wrap any CLI coding agent into an A2A server — one command. Zero plugins. Zero lock-in.</sup>
 
 </div>
 
+<br>
+
 ---
+
+<br>
+
+<details>
+<summary><strong>Table of Contents</strong></summary>
+
+- [Manifesto](#manifesto)
+- [One Command](#one-command)
+- [Test It in 30 Seconds](#test-it-in-30-seconds)
+- [Detect Installed Agents](#detect-installed-agents)
+- [How It Works](#how-it-works)
+- [Supported Agents](#supported-agents)
+- [Why A2A over MCP?](#why-a2a-over-mcp)
+- [Client Library](#client-library)
+- [CLI Reference](#cli-reference)
+- [Config](#config)
+- [Deployment](#deployment)
+- [Architecture](#architecture)
+- [Contributing](#contributing)
+- [Documentation](#documentation)
+- [License](#license)
+
+</details>
+
+<br>
+
+---
+
+<br>
 
 ## Manifesto
 
-The best coding agents in the world — `pi`, `claude`, `aider`, `codex`, `gemini`, `opencode` — share one trait: they work alone. Each one is a powerful, self-contained process. You run it, it does the job, it disappears.
+The best coding agents in the world — `pi`, `claude`, `aider`, `codex`, `gemini`, `opencode` — share one trait:
 
-There is no discovery. No delegation. No protocol. No way for an orchestrator to say "you, do this" without wrapping each agent in custom glue code.
+**They work alone.**
 
-```
-    pi ──?── orchestrator ──?── claude
-    aider ──?──            ──?── codex
+Each one is a powerful, self-contained process. You run it, it does the job, it disappears.
+
+No discovery. No delegation. No protocol. No way for an orchestrator to say *you, do this* without wrapping each agent in custom glue code.
+
+```text
+  pi ──?── orchestrator ──?── claude
+  aider ──?──           ──?── codex
 ```
 
 Every team that wants multi-agent workflows builds the same bridge from scratch. Over and over.
@@ -39,12 +74,16 @@ Every team that wants multi-agent workflows builds the same bridge from scratch.
 
 It wraps any CLI agent into an **A2A-compliant server** in one command. No plugins. No agent-side changes. No vendor lock-in. The agent doesn't even know it's been bridged.
 
-```
-    pi ──── Fang ──── A2A Protocol ──── orchestrator ──── A2A Protocol ──── Fang ──── claude
-  aider ──── Fang ──── A2A Protocol ────             ──── A2A Protocol ──── Fang ──── codex
+```text
+  pi ──── Fang ──── A2A ──── orchestrator ──── A2A ──── Fang ──── claude
+  aider ── Fang ──── A2A ────               ──── A2A ──── Fang ──── codex
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## One Command
 
@@ -71,12 +110,16 @@ fang wrap "aider --json"     --port 3005   # oneshot JSON mode
 fang serve -c fang.yaml
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## Test It in 30 Seconds
 
 ```bash
-# 1. Wrap even `cat` as an A2A agent
+# 1. Wrap even cat as an A2A agent
 fang wrap "cat" --port 3001 &
 
 # 2. Send a task
@@ -96,7 +139,11 @@ curl -X POST http://localhost:3001/a2a \
   }'
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## Detect Installed Agents
 
@@ -104,7 +151,7 @@ curl -X POST http://localhost:3001/a2a \
 fang detect
 ```
 
-```
+```text
   Scanning for CLI agents...
 
   ✓ Claude Code     Tier 1
@@ -122,41 +169,50 @@ fang detect
     Skills: Code any task, Refactor, Debug & fix
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## How It Works
 
-```
-                          ANY A2A ORCHESTRATOR
-                                 │
-                      JSON-RPC 2.0 / REST / SSE
-                                 │
-                                 ▼
-                    ┌────────────────────────────┐
-                    │         FangServer          │
-                    │     (@a2a-js/sdk + Express)  │
-                    │                              │
-                    │  FangAgentExecutor           │
-                    │  Adapter (agent-specific)    │
-                    │  ProcessManager              │
-                    └────────────┬─────────────────┘
-                                 │
-                           stdin / stdout
-                                 │
-                                 ▼
-                    ┌────────────────────────────┐
-                    │   pi / claude / aider / any │
-                    └────────────────────────────┘
+```text
+                      ANY A2A ORCHESTRATOR
+                             │
+                  JSON-RPC 2.0 / REST / SSE
+                             │
+                             ▼
+                ┌────────────────────────────┐
+                │         FangServer          │
+                │     (@a2a-js/sdk + Express)  │
+                │                              │
+                │  FangAgentExecutor           │
+                │  Adapter (agent-specific)    │
+                │  ProcessManager              │
+                └────────────┬─────────────────┘
+                             │
+                       stdin / stdout
+                             │
+                             ▼
+                ┌────────────────────────────┐
+                │   pi / claude / aider / any │
+                └────────────────────────────┘
 ```
 
-**The core insight:** Every CLI agent reads stdin and writes stdout. That interface is older than HTTP, older than JSON, older than every protocol since the terminal itself. Fang translates between that universal interface and A2A. Nothing more, nothing less.
+> [!NOTE]
+> **The core insight:** Every CLI agent reads stdin and writes stdout. That interface is older than HTTP, older than JSON — older than every protocol since the terminal itself. Fang translates between that universal interface and A2A. Nothing more, nothing less.
+
+<br>
 
 ---
+
+<br>
 
 ## Supported Agents
 
 | Agent | Tier | Protocol | Mode | Status |
-|-------|:----:|----------|------|:------:|
+|:------|:----:|:---------|:-----|:------:|
 | **Pi** | 1 | JSONL RPC | **Persistent** | ✅ |
 | **Claude Code** | 1 | stream-json | Oneshot | ✅ |
 | **Codex CLI** | 1 | JSONL | Oneshot | ✅ |
@@ -167,30 +223,45 @@ fang detect
 | **Goose** | 2 | ACP | Oneshot | 🔜 |
 | **SWE-agent** | 3 | Text | Oneshot | 🔜 |
 
-### Tier System
+<details>
+<summary><strong>Tier System</strong></summary>
 
-- **Tier 1** — Native JSON/JSONL output. Direct event parsing. Zero ambiguity. (Pi, Claude Code, Codex)
-- **Tier 2** — Structured protocol over stdio. Protocol bridge with known schema. (Gemini CLI, OpenCode)
-- **Tier 3** — Text only. Heuristic parsing. Best-effort. (Aider, generic fallback)
+- **Tier 1** — Native JSON/JSONL output. Direct event parsing. Zero ambiguity. *(Pi, Claude Code, Codex)*
+- **Tier 2** — Structured protocol over stdio. Protocol bridge with known schema. *(Gemini CLI, OpenCode)*
+- **Tier 3** — Text only. Heuristic parsing. Best-effort. *(Aider, generic fallback)*
 
-### Persistent Mode
+</details>
+
+<details>
+<summary><strong>Persistent Mode</strong></summary>
 
 Pi's `--mode rpc` is the gold standard — a long-lived process with bidirectional JSONL. Fang keeps Pi alive between tasks, preserving session context and warm caches. No other bridge does this.
 
+</details>
+
+<br>
+
 ---
+
+<br>
 
 ## Why A2A over MCP?
 
-CLI agents are **4–32× more token-efficient** than MCP-based approaches.
+CLI agents are **4-32x more token-efficient** than MCP-based approaches.
 
 | Approach | Tokens/query | Monthly cost (10K ops) |
-|----------|:-:|:-:|
+|:---------|:------------:|:----------------------:|
 | MCP | ~44,000 | ~$55 |
 | CLI via fang | ~1,400 | ~$3 |
 
-MCP injects tool schemas into every context window. GitHub's Copilot MCP burns ~55K tokens of schema per session. A2A uses lightweight Agent Cards (~500 bytes) and keeps agent internals internal.
+> [!IMPORTANT]
+> MCP injects tool schemas into every context window. GitHub's Copilot MCP burns ~55K tokens of schema per session. A2A uses lightweight Agent Cards (~500 bytes) and keeps agent internals internal.
+
+<br>
 
 ---
+
+<br>
 
 ## Client Library
 
@@ -207,11 +278,15 @@ const result = await client.send('refactor src/auth.ts to use async/await');
 console.log(result.text);
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## CLI Reference
 
-```
+```text
 fang wrap <command> -p <port>   Wrap any CLI as an A2A server
 fang serve [-c config.yaml]     Start all agents from config
 fang detect                     Detect installed CLI agents
@@ -220,7 +295,11 @@ fang send "<msg>" -p <port>     Send a task to a wrapped agent
 fang stop [-p <port> | --all]   Stop one or all wrapped agents
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## Config
 
@@ -243,7 +322,11 @@ agents:
     timeout: 120
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## Deployment
 
@@ -261,11 +344,15 @@ sudo systemctl enable fang@"pi --mode rpc"
 sudo systemctl start fang@"pi --mode rpc"
 ```
 
+<br>
+
 ---
+
+<br>
 
 ## Architecture
 
-```
+```text
 packages/
 ├── core/           FangServer, FangAgentExecutor, BaseAdapter, ProcessManager
 ├── client/         @fangai/client — FangClient + discoverAgents
@@ -279,11 +366,11 @@ packages/
     └── generic/    Generic text passthrough (catches everything else)
 ```
 
-**pnpm monorepo.** Each package is independently publishable.
+> **pnpm monorepo.** Each package is independently publishable.
 
 Two execution models:
-- **oneshot** — spawn per task, stdout = result, exit = done (Claude, Aider, Codex, etc.)
-- **persistent** — spawn once, JSONL over stdin/stdout, keep alive between tasks (Pi `--mode rpc`)
+- **oneshot** — spawn per task, stdout = result, exit = done *(Claude, Aider, Codex, etc.)*
+- **persistent** — spawn once, JSONL over stdin/stdout, keep alive between tasks *(Pi `--mode rpc`)*
 
 Built on `@a2a-js/sdk` for full A2A protocol compliance:
 - `DefaultRequestHandler` + `InMemoryTaskStore` for task lifecycle
@@ -291,51 +378,67 @@ Built on `@a2a-js/sdk` for full A2A protocol compliance:
 - `jsonRpcHandler` for JSON-RPC 2.0
 - `restHandler` for HTTP+JSON/REST
 
-Full internals: [ARCHITECTURE.md](ARCHITECTURE.md)
+Full internals: **[ARCHITECTURE.md](ARCHITECTURE.md)**
+
+<br>
 
 ---
 
+<br>
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The most valuable contributions:
+See **[CONTRIBUTING.md](CONTRIBUTING.md)**. The most valuable contributions:
 
 1. **New adapters** — wrap a CLI agent we don't support yet
 2. **Bug reports** — tell us what breaks
 3. **Examples** — show your multi-agent setup
 
+<br>
+
 ---
+
+<br>
 
 ## Documentation
 
 | Doc | What |
-|-----|------|
+|:----|:-----|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Design, data flow, security model, adapter guide |
-| [docs/ADAPTERS.md](docs/ADAPTERS.md) | Writing new adapters (full walkthrough) |
-| [docs/A2A-COMPLIANCE.md](docs/A2A-COMPLIANCE.md) | A2A protocol compliance details |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment guide |
-| [docs/FANG-SPEC.md](docs/FANG-SPEC.md) | Implementation spec |
-| [docs/PUBLISHING.md](docs/PUBLISHING.md) | npm publishing process |
+| [ADAPTERS.md](docs/ADAPTERS.md) | Writing new adapters (full walkthrough) |
+| [A2A-COMPLIANCE.md](docs/A2A-COMPLIANCE.md) | A2A protocol compliance details |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deployment guide |
+| [FANG-SPEC.md](docs/FANG-SPEC.md) | Implementation spec |
+| [PUBLISHING.md](docs/PUBLISHING.md) | npm publishing process |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
 
+<br>
+
 ---
+
+<br>
 
 ## License
 
-MIT
+[MIT](LICENSE) — do what you want.
+
+<br>
 
 ---
 
+<br>
+
 <div align="center">
 
-```
-   /\_/\      Built for developers who use more than one agent
-  / o o \     and refuse to build the same bridge twice.
- (  >.<  )
-  \  ~  /
-   \_O_/
+```text
+   /\_/\      Built for developers who use more than
+  ( o.o )     one agent and refuse to build the same
+   > ^ <      bridge twice.
 ```
 
-**[GitHub](https://github.com/kariemSeiam/fangai)**
+**[kariemSeiam/fangai](https://github.com/kariemSeiam/fangai)**
+
+<sub>Every commit howls. 🐺</sub>
 
 </div>
