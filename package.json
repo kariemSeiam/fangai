@@ -6,7 +6,7 @@
     "fang": "src/cli.ts"
   },
   "main": "src/index.ts",
-  "description": "Any CLI coding agent. A2A citizen. One command. 🐺",
+  "description": "Every CLI agent is an island. Fang builds the bridge. A2A-compliant server for any CLI coding agent.",
   "license": "MIT",
   "keywords": [
     "a2a",
@@ -46,5 +46,9 @@
     "@types/which": "^3.0.0",
     "typescript": "^5.4.0",
     "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kariemSeiam/fangai.git"
   }
 }

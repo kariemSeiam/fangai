@@ -2,7 +2,7 @@
   "name": "@fangai/cli",
   "version": "0.1.0",
   "type": "module",
-  "description": "Fang — wrap any CLI coding agent as an A2A server (stdin/stdout bridge).",
+  "description": "Fang \u2014 wrap any CLI coding agent as an A2A server (stdin/stdout bridge).",
   "bin": {
     "fang": "./dist/index.js",
     "a2a-cli": "./dist/index.js"
@@ -47,7 +47,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/kariemSeiam/fangai.git",
-    "directory": "fang/packages/cli"
+    "directory": "packages/cli"
   },
   "publishConfig": {
     "access": "public"

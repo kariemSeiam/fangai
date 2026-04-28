@@ -39,7 +39,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/kariemSeiam/fangai.git",
-    "directory": "fang/packages/pi"
+    "directory": "packages/pi"
   },
   "publishConfig": {
     "access": "public"
