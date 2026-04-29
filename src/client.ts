@@ -101,37 +101,55 @@ export class FangClient {
       }
 
       const artifactText = result?.artifact?.parts?.find((p: any) => typeof p?.text === 'string')?.text;
-      if (!artifactText || typeof artifactText !== 'string') return;
+      if (artifactText && typeof artifactText === 'string') {
+        // Try parsing as structured JSON (Pi protocol)
+        let inner: any;
+        try {
+          inner = JSON.parse(artifactText);
+        } catch {
+          // Plain text artifact — accumulate directly
+          if (result?.append) finalText += artifactText;
+          else finalText = artifactText;
+          opts?.onProgress?.(artifactText);
+          return;
+        }
 
-      let inner: any;
-      try {
-        inner = JSON.parse(artifactText);
-      } catch {
-        return;
+        const assistantEvent = inner?.assistantMessageEvent ?? inner;
+        if (assistantEvent?.type === 'text_delta' && typeof assistantEvent.delta === 'string') {
+          opts?.onProgress?.(assistantEvent.delta);
+          finalText += assistantEvent.delta;
+          return;
+        }
+
+        const msg = assistantEvent?.message ?? inner?.message ?? assistantEvent?.partial ?? inner?.partial;
+        const content = msg?.content;
+        if (Array.isArray(content)) {
+          const finalParts = content.filter((part: any) =>
+            typeof part?.text === 'string' && typeof part?.textSignature === 'string' && part.textSignature.includes('final_answer'),
+          );
+          const fallbackParts = content.filter((part: any) =>
+            typeof part?.text === 'string' && part.type !== 'thinking',
+          );
+          const text = (finalParts.length ? finalParts : fallbackParts)
+            .map((part: any) => part.text)
+            .join('');
+          if (text) finalText = text;
+        }
+
+        if (assistantEvent?.type === 'message_end' || assistantEvent?.type === 'turn_end') {
+          finished = true;
+        }
       }
 
-      const assistantEvent = inner?.assistantMessageEvent ?? inner;
-      if (assistantEvent?.type === 'text_delta' && typeof assistantEvent.delta === 'string') {
-        opts?.onProgress?.(assistantEvent.delta);
-        return;
+      // Handle final message event (contains accumulated text for oneshot agents)
+      if (result?.kind === 'message') {
+        const msgText = result.parts?.map((p: any) => p.text).join('') || '';
+        if (msgText) finalText = msgText;
+        finished = true;
       }
 
-      const msg = assistantEvent?.message ?? inner?.message ?? assistantEvent?.partial ?? inner?.partial;
-      const content = msg?.content;
-      if (Array.isArray(content)) {
-        const finalParts = content.filter((part: any) =>
-          typeof part?.text === 'string' && typeof part?.textSignature === 'string' && part.textSignature.includes('final_answer'),
-        );
-        const fallbackParts = content.filter((part: any) =>
-          typeof part?.text === 'string' && part.type !== 'thinking',
-        );
-        const text = (finalParts.length ? finalParts : fallbackParts)
-          .map((part: any) => part.text)
-          .join('');
-        if (text) finalText = text;
-      }
-
-      if (assistantEvent?.type === 'message_end' || assistantEvent?.type === 'turn_end') {
+      // Handle status-update with final flag
+      if (result?.kind === 'status-update' && result?.final) {
         finished = true;
       }
     };

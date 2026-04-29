@@ -134,42 +134,39 @@ describe('ClaudeAdapter', () => {
     expect(adapter.binary).toBe('claude');
   });
 
-  it('builds stream-json args with --no-input', () => {
+  it('builds stream-json args with -p and --verbose', () => {
     const args = adapter.buildArgs(dummyTask, dummyConfig);
+    expect(args).toContain('-p');
     expect(args).toContain('--output-format');
     expect(args).toContain('stream-json');
-    expect(args).toContain('--input-format');
-    expect(args).toContain('stream-json');
-    expect(args).toContain('--no-input');
+    expect(args).toContain('--verbose');
+    expect(args).toContain('--max-turns');
   });
 
-  it('formats input as JSON user_message', () => {
+  it('formats input as plain text', () => {
     const input = adapter.formatInput(dummyTask);
-    const parsed = JSON.parse(input.trim());
-    expect(parsed.type).toBe('user_message');
-    expect(parsed.content).toBe('fix the bug in auth.ts');
+    expect(input).toBe('fix the bug in auth.ts');
   });
 
-  it('parses content_block_delta', () => {
+  it('parses assistant message with text content', () => {
     const events = adapter.parseLine(JSON.stringify({
-      type: 'content_block_delta', delta: { text: 'code here' },
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'code here' }] },
     }));
     expect(events[0].type).toBe('text-delta');
     if (events[0].type === 'text-delta') expect(events[0].text).toBe('code here');
   });
 
-  it('parses text_delta type', () => {
-    const events = adapter.parseLine(JSON.stringify({
-      type: 'text_delta', text: 'response text',
-    }));
-    expect(events[0].type).toBe('text-delta');
-    if (events[0].type === 'text-delta') expect(events[0].text).toBe('response text');
-  });
-
   it('parses result as completed', () => {
-    const events = adapter.parseLine(JSON.stringify({ type: 'result' }));
+    const events = adapter.parseLine(JSON.stringify({ type: 'result', is_error: false }));
     expect(events[0].type).toBe('status');
     if (events[0].type === 'status') expect(events[0].state).toBe('completed');
+  });
+
+  it('parses result with error as failed', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'result', is_error: true }));
+    expect(events[0].type).toBe('status');
+    if (events[0].type === 'status') expect(events[0].state).toBe('failed');
   });
 
   it('parses error type', () => {
@@ -178,19 +175,14 @@ describe('ClaudeAdapter', () => {
     if (events[0].type === 'error') expect(events[0].message).toBe('fail');
   });
 
-  it('parses tool_use as tool-call', () => {
-    const events = adapter.parseLine(JSON.stringify({
-      type: 'tool_use', name: 'edit_file', input: { path: 'x.ts' },
-    }));
-    expect(events[0].type).toBe('tool-call');
-    if (events[0].type === 'tool-call') expect(events[0].tool).toBe('edit_file');
+  it('ignores system events', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'system', cwd: '/tmp' }));
+    expect(events).toHaveLength(0);
   });
 
-  it('parses tool_result', () => {
-    const events = adapter.parseLine(JSON.stringify({
-      type: 'tool_result', tool_use_id: 'tu-1', content: 'result text',
-    }));
-    expect(events[0].type).toBe('tool-result');
+  it('ignores rate_limit_event', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'rate_limit_event', rate_limit_info: {} }));
+    expect(events).toHaveLength(0);
   });
 
   it('passes non-JSON text as text-delta', () => {
@@ -337,10 +329,17 @@ describe('GeminiAdapter', () => {
 describe('OpenCodeAdapter', () => {
   const adapter = new OpenCodeAdapter();
 
-  it('builds -f json args', () => {
+  it('builds run --format json args with message', () => {
     const args = adapter.buildArgs(dummyTask, dummyConfig);
-    expect(args).toContain('-f');
+    expect(args[0]).toBe('run');
+    expect(args).toContain('--format');
     expect(args).toContain('json');
+    expect(args).toContain('fix the bug in auth.ts');
+  });
+
+  it('formats input as empty (message in args)', () => {
+    const input = adapter.formatInput(dummyTask);
+    expect(input).toBe('');
   });
 
   it('parses text/response types', () => {
