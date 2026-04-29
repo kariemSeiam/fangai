@@ -208,8 +208,9 @@ export class PiAdapter implements AgentAdapter {
 }
 
 /**
- * Claude Code adapter — stream-json mode
- * Tier 1. Full bidirectional NDJSON.
+ * Claude Code adapter — stream-json print mode
+ * Tier 1. Uses -p --output-format stream-json --verbose.
+ * Event types: system, assistant (with message.content), result, error.
  */
 export class ClaudeAdapter implements AgentAdapter {
   readonly id = 'claude-code';
@@ -223,7 +224,7 @@ export class ClaudeAdapter implements AgentAdapter {
   ];
 
   buildArgs(task: AgentTask, config: FangConfig): string[] {
-    const args = ['--output-format', 'stream-json', '--input-format', 'stream-json', '--no-input'];
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '10'];
     if (task.context?.workdir) args.push('--cwd', task.context.workdir);
     else if (config.workdir) args.push('--cwd', config.workdir);
     if (config.agentFlags?.length) args.push(...config.agentFlags);
@@ -231,7 +232,7 @@ export class ClaudeAdapter implements AgentAdapter {
   }
 
   formatInput(task: AgentTask): string {
-    return JSON.stringify({ type: 'user_message', content: task.message }) + '\n';
+    return task.message;
   }
 
   parseLine(line: string): AdapterEvent[] {
@@ -242,18 +243,21 @@ export class ClaudeAdapter implements AgentAdapter {
     }
 
     switch (obj.type) {
-      case 'text_delta':
-      case 'content_block_delta':
-        return (obj.text || obj.delta?.text) ? [{ type: 'text-delta', text: obj.text || obj.delta.text }] : [];
-      case 'tool_use':
-      case 'content_block_start':
-        return obj.name ? [{ type: 'tool-call', tool: obj.name, input: obj.input }] : [];
-      case 'tool_result':
-        return [{ type: 'tool-result', tool: String(obj.tool_use_id || 'unknown'), output: typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content), isError: obj.is_error }];
+      // Claude stream-json format: type=assistant has message.content[].text
+      case 'assistant': {
+        const text = obj.message?.content
+          ?.filter((p: any) => p.type === 'text')
+          ?.map((p: any) => p.text)
+          ?.join('') || '';
+        return text ? [{ type: 'text-delta', text }] : [];
+      }
       case 'result':
-        return [{ type: 'status', state: 'completed' }];
+        return [{ type: 'status', state: obj.is_error ? 'failed' : 'completed' }];
       case 'error':
         return [{ type: 'error', message: String(obj.message || 'Unknown error') }];
+      case 'system':
+      case 'rate_limit_event':
+        return [];
       default:
         return obj.text ? [{ type: 'text-delta', text: obj.text }] : [];
     }
@@ -497,12 +501,18 @@ export class OpenCodeAdapter implements AgentAdapter {
     { id: 'code', name: 'Code tasks', tags: ['typescript', 'python'] },
   ];
 
-  buildArgs(_task: AgentTask, _config: FangConfig): string[] {
-    return ['--format', 'json'];
+  buildArgs(task: AgentTask, config: FangConfig): string[] {
+    const args = ['run', '--format', 'json'];
+    if (task.context?.workdir) args.push('--dir', task.context.workdir);
+    else if (config.workdir) args.push('--dir', config.workdir);
+    // OpenCode takes message as positional args, not stdin
+    args.push(task.message);
+    return args;
   }
 
-  formatInput(task: AgentTask): string {
-    return task.message + '\n';
+  formatInput(_task: AgentTask): string {
+    // Message already in buildArgs; return empty for stdin
+    return '';
   }
 
   parseLine(line: string): AdapterEvent[] {
