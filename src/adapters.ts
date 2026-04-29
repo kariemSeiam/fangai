@@ -498,7 +498,7 @@ export class OpenCodeAdapter implements AgentAdapter {
   ];
 
   buildArgs(_task: AgentTask, _config: FangConfig): string[] {
-    return ['-f', 'json'];
+    return ['--format', 'json'];
   }
 
   formatInput(task: AgentTask): string {
@@ -509,10 +509,11 @@ export class OpenCodeAdapter implements AgentAdapter {
     if (!line.trim()) return [];
     try {
       const obj = JSON.parse(line);
-      if (obj.type === 'text' || obj.type === 'response') return [{ type: 'text-delta', text: obj.content || obj.text || '' }];
+      const text = obj.text || obj.content || obj.part?.text || '';
+      if (obj.type === 'text' || obj.type === 'response') return [{ type: 'text-delta', text }];
       if (obj.type === 'content') return [{ type: 'text-delta', text: obj.text || '' }];
-      if (obj.type === 'done' || obj.type === 'complete') return [{ type: 'status', state: 'completed' }];
-      if (obj.type === 'error') return [{ type: 'error', message: obj.message || 'OpenCode error' }];
+      if (obj.type === 'done' || obj.type === 'complete' || obj.type === 'step_finish') return [{ type: 'status', state: 'completed' }];
+      if (obj.type === 'error') return [{ type: 'error', message: obj.message || obj.part?.message || 'OpenCode error' }];
       return [];
     } catch {
       return [{ type: 'text-delta', text: line.trim() }];
