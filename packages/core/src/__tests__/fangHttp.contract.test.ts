@@ -54,8 +54,8 @@ describe("Fang HTTP contract", () => {
     expect(card.name).toBe("contract-agent");
   });
 
-  it("POST /a2a returns JSON-RPC error for unknown method", async () => {
-    const res = await fetch(`${base}/a2a`, {
+  it("POST /a2a/jsonrpc returns JSON-RPC error for unknown method", async () => {
+    const res = await fetch(`${base}/a2a/jsonrpc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -77,8 +77,8 @@ describe("Fang HTTP contract", () => {
     expect(body.error?.message).toMatch(/not found|Method/i);
   });
 
-  it("POST /a2a tasks/get returns JSON-RPC error when task is missing", async () => {
-    const res = await fetch(`${base}/a2a`, {
+  it("POST /a2a/jsonrpc tasks/get returns JSON-RPC error when task is missing", async () => {
+    const res = await fetch(`${base}/a2a/jsonrpc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -141,8 +141,8 @@ describe("Fang HTTP contract (API key)", () => {
     expect(card.name).toBe("keyed-agent");
   });
 
-  it("POST /a2a without credentials returns 401", async () => {
-    const res = await fetch(`${base}/a2a`, {
+  it("POST /a2a/jsonrpc without credentials returns 401", async () => {
+    const res = await fetch(`${base}/a2a/jsonrpc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -157,8 +157,8 @@ describe("Fang HTTP contract (API key)", () => {
     expect(j.error).toBe("Unauthorized");
   });
 
-  it("POST /a2a with X-Api-Key reaches JSON-RPC", async () => {
-    const res = await fetch(`${base}/a2a`, {
+  it("POST /a2a/jsonrpc with X-Api-Key reaches JSON-RPC", async () => {
+    const res = await fetch(`${base}/a2a/jsonrpc`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -177,8 +177,8 @@ describe("Fang HTTP contract (API key)", () => {
     expect(body.error?.message).toMatch(/not found|Method/i);
   });
 
-  it("POST /a2a with Authorization Bearer reaches JSON-RPC", async () => {
-    const res = await fetch(`${base}/a2a`, {
+  it("POST /a2a/jsonrpc with Authorization Bearer reaches JSON-RPC", async () => {
+    const res = await fetch(`${base}/a2a/jsonrpc`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

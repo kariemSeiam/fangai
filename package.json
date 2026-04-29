@@ -31,7 +31,6 @@
     "@a2a-js/sdk": "^0.3.13",
     "commander": "^13.1.0",
     "express": "^4.22.1",
-    "which": "^1.0.0",
     "yaml": "^2.8.3"
   },
   "devDependencies": {

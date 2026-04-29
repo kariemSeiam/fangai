@@ -22,10 +22,15 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import * as which from 'which';
 import type { AgentAdapter, AgentTask, FangConfig, AdapterEvent, DetectionResult } from './core.ts';
 
 const execFileAsync = promisify(execFile);
+
+/** Resolve a binary path using system `which` — avoids the `which` npm package ESM bug on Node 24. */
+async function whichBinary(binary: string): Promise<string> {
+  const { stdout } = await execFileAsync('which', [binary], { timeout: 5000 });
+  return stdout.trim();
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
@@ -195,7 +200,7 @@ export class PiAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 1, protocol: 'jsonl-rpc' };
     } catch { return null; }
@@ -256,7 +261,65 @@ export class ClaudeAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
+      const version = await detectVersion(this.binary);
+      return { binary: this.binary, version, path, tier: 1, protocol: 'stream-json' };
+    } catch { return null; }
+  }
+}
+
+/**
+ * Cursor adapter — stream-json mode
+ * Tier 1. Full bidirectional NDJSON via --print --output-format stream-json.
+ */
+export class CursorAdapter implements AgentAdapter {
+  readonly id = 'cursor';
+  readonly binary = 'agent';
+  readonly tier = 1 as const;
+  readonly displayName = 'Cursor Agent';
+  readonly mode = 'oneshot' as const;
+  skills = [
+    { id: 'code', name: 'Code generation', tags: ['typescript', 'python', 'system-design'] },
+    { id: 'reasoning', name: 'Complex reasoning', tags: ['reasoning', 'architecture', 'debugging'] },
+    { id: 'plan', name: 'Planning & analysis', tags: ['plan', 'review', 'refactor'] },
+  ];
+
+  buildArgs(_task: AgentTask, _config: FangConfig): string[] {
+    return ['--print', '--output-format', 'stream-json'];
+  }
+
+  formatInput(task: AgentTask): string {
+    return task.message + '\n';
+  }
+
+  parseLine(line: string): AdapterEvent[] {
+    if (!line.trim()) return [];
+    let obj: any;
+    try { obj = JSON.parse(line); } catch {
+      return [{ type: 'text-delta', text: line + '\n' }];
+    }
+
+    switch (obj.type) {
+      case 'text_delta':
+      case 'content_block_delta':
+        return (obj.text || obj.delta?.text) ? [{ type: 'text-delta', text: obj.text || obj.delta.text }] : [];
+      case 'tool_use':
+      case 'content_block_start':
+        return obj.name ? [{ type: 'tool-call', tool: obj.name, input: obj.input }] : [];
+      case 'tool_result':
+        return [{ type: 'tool-result', tool: String(obj.tool_use_id || 'unknown'), output: typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content), isError: obj.is_error }];
+      case 'result':
+        return [{ type: 'status', state: 'completed' }];
+      case 'error':
+        return [{ type: 'error', message: String(obj.message || 'Unknown error') }];
+      default:
+        return obj.text ? [{ type: 'text-delta', text: obj.text }] : [];
+    }
+  }
+
+  async detect(): Promise<DetectionResult | null> {
+    try {
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 1, protocol: 'stream-json' };
     } catch { return null; }
@@ -305,7 +368,7 @@ export class AiderAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 3, protocol: 'text' };
     } catch { return null; }
@@ -359,7 +422,7 @@ export class CodexAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 1, protocol: 'jsonl' };
     } catch { return null; }
@@ -413,7 +476,7 @@ export class GeminiAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 2, protocol: 'acp' };
     } catch { return null; }
@@ -458,7 +521,7 @@ export class OpenCodeAdapter implements AgentAdapter {
 
   async detect(): Promise<DetectionResult | null> {
     try {
-      const path = await which(this.binary);
+      const path = await whichBinary(this.binary);
       const version = await detectVersion(this.binary);
       return { binary: this.binary, version, path, tier: 2, protocol: 'json' };
     } catch { return null; }
@@ -489,9 +552,8 @@ export class GenericAdapter implements AgentAdapter {
   async detect(): Promise<DetectionResult | null> {
     if (!this.cliCommand) return null;
     try {
-      const which = await import('which');
       const [cmd] = this.cliCommand.split(' ');
-      const path = await which(cmd);
+      const path = await whichBinary(cmd);
       const version = await detectVersion(cmd);
       return { binary: cmd, version, path, tier: 3, protocol: 'text' };
     } catch { return null; }
@@ -503,6 +565,7 @@ export class GenericAdapter implements AgentAdapter {
 export const ALL_ADAPTERS: AgentAdapter[] = [
   new PiAdapter(),
   new ClaudeAdapter(),
+  new CursorAdapter(),
   new CodexAdapter(),
   new GeminiAdapter(),
   new AiderAdapter(),

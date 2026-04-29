@@ -53,7 +53,7 @@ export class FangServer {
     this.app.use("/.well-known/agent.json", cardMw);
 
     this.app.use(
-      "/a2a",
+      "/a2a/jsonrpc",
       gate,
       jsonRpcHandler({
         requestHandler,
@@ -95,7 +95,7 @@ export class FangServer {
         console.log(
           `🦷 ${this.config.name} on ${bindLabel} | ` +
             `Card ${base}/.well-known/agent-card.json | ` +
-            `JSON-RPC ${base}/a2a | REST ${base}/v1/…` +
+            `JSON-RPC ${base}/a2a/jsonrpc | REST ${base}/v1/…` +
             authHint
         );
         resolve();
