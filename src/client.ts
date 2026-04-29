@@ -37,7 +37,7 @@ export class FangClient {
   }
 
   async sendStream(message: string, opts?: { contextId?: string; onProgress?: (text: string) => void }): Promise<TaskResult> {
-    const res = await fetch(`${this.baseUrl}/a2a`, {
+    const res = await fetch(`${this.baseUrl}/a2a/jsonrpc`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({

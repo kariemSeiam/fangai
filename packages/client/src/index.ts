@@ -77,7 +77,7 @@ function authHeaders(apiKey?: string): Record<string, string> {
 }
 
 /**
- * POST a JSON-RPC 2.0 call to `{baseUrl}/a2a` (Fang default mount).
+ * POST a JSON-RPC 2.0 call to `{baseUrl}/a2a/jsonrpc` (Fang default mount).
  */
 export async function callJsonRpc<T = unknown>(
   baseUrl: string,
@@ -92,7 +92,7 @@ export async function callJsonRpc<T = unknown>(
     params,
   };
 
-  const res = await fetch(`${normalizeBase(baseUrl)}/a2a`, {
+  const res = await fetch(`${normalizeBase(baseUrl)}/a2a/jsonrpc`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -165,7 +165,7 @@ export class FangClient {
       params: { message },
     };
 
-    return fetch(`${this.base}/a2a`, {
+    return fetch(`${this.base}/a2a/jsonrpc`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
