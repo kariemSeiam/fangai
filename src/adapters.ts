@@ -865,29 +865,22 @@ export class GenericAdapter implements AgentAdapter {
 
 // ─── Registry ──────────────────────────────────────────────────────────────
 
+import { CursorAgentAdapter } from './cursor-adapter.ts';
+
 export const ALL_ADAPTERS: AgentAdapter[] = [
   new PiAdapter(),
   new ClaudeAdapter(),
-  new CursorAdapter(),
+  new CursorAgentAdapter(),
   new CodexAdapter(),
   new GeminiAdapter(),
   new AiderAdapter(),
   new OpenCodeAdapter(),
 ];
 
-import { CursorAgentAdapter } from './cursor-adapter.ts';
-
-/** All adapters including CursorAgentAdapter */
-export const ALL_ADAPTERS_V2: AgentAdapter[] = [
-  ...ALL_ADAPTERS,
-  new CursorAgentAdapter(),
-];
-
-export function detectAdapter(cli: string, useV2 = false): AgentAdapter {
-  const adapters = useV2 ? ALL_ADAPTERS_V2 : ALL_ADAPTERS;
+export function detectAdapter(cli: string): AgentAdapter {
   // Match binary name bounded by non-hyphen word boundaries or path separators.
   // e.g. "some-pi-wrapper" should NOT match "pi", but "pi" and "/usr/bin/pi" should.
-  for (const adapter of adapters) {
+  for (const adapter of ALL_ADAPTERS) {
     if (!adapter.binary) continue;
     // Allow path separators (/) and start/end of string as boundaries,
     // but NOT hyphens — they're part of command names.

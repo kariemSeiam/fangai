@@ -242,7 +242,7 @@ import { detectAdapter as detectAdapterV2 } from '../adapters.ts';
 
 describe('detectAdapter with cursor-agent', () => {
   it('detects cursor-agent via fallback', () => {
-    const adapter = detectAdapterV2('cursor-agent --print', false);
-    expect(['cursor', 'cursor-agent']).toContain(adapter.id);
+    const adapter = detectAdapterV2('cursor-agent --print');
+    expect(['cursor-agent']).toContain(adapter.id);
   });
 });
