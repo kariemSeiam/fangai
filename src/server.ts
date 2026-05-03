@@ -18,6 +18,7 @@ import {
   type AgentAdapter, type FangConfig, type AdapterEvent,
   ProcessManager, PersistentProcess,
 } from './core.ts';
+import { CursorAgentAdapter, CursorSessionStore, type CursorSession } from './cursor-adapter.ts';
 
 // ─── BridgeExecutor ────────────────────────────────────────────────────────
 
@@ -260,11 +261,16 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
     description: `${adapter.displayName} via fang — A2A bridge`,
     protocolVersion: '0.3.0',
     version: '1.0.0',
-    url: `http://localhost:${port}`,
+    url: process.env.FANG_PUBLIC_URL ?? `http://localhost:${port}`,
     capabilities: { streaming: true },
-    skills: adapter.skills,
+    skills: adapter.skills.map(s => ({ ...s, description: s.name })),
     defaultInputModes: ['text/plain'],
     defaultOutputModes: ['text/plain'],
+    metadata: {
+      bridge: 'fang',
+      tier: adapter.tier,
+      mode: adapter.mode,
+    },
   };
 
   const executor = new BridgeExecutor(adapter, { ...rest, port });
@@ -288,7 +294,13 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
         });
       }
 
-      // Auth
+      // Public routes — must be mounted BEFORE auth gate (A2A spec requires public agent card)
+      app.use('/.well-known/agent-card.json', agentCardHandler({ agentCardProvider: requestHandler }));
+      app.get('/health', (_req, res) => {
+        res.json({ status: 'ok', agent: name, mode: adapter.mode, tier: adapter.tier });
+      });
+
+      // Auth gate — applied to all routes below this point only
       if (config.apiKey) {
         app.use((req: Request, res: Response, next: NextFunction) => {
           if (req.headers.authorization !== `Bearer ${config.apiKey}`) {
@@ -298,15 +310,96 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
         });
       }
 
-      // A2A endpoints — powered by @a2a-js/sdk
-      app.use('/.well-known/agent-card.json', agentCardHandler({ agentCardProvider: requestHandler }));
+      // A2A endpoints — protected by auth gate above (if configured)
       app.use('/a2a/jsonrpc', jsonRpcHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
       app.use('/a2a/rest', restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 
-      // Health
-      app.get('/health', (_req, res) => {
-        res.json({ status: 'ok', agent: name, mode: adapter.mode, tier: adapter.tier });
-      });
+      // ── Cursor-specific management endpoints ────────────────────────
+      // Only mounted when adapter is CursorAgentAdapter
+      if (adapter instanceof CursorAgentAdapter) {
+        const cursorAdapter = adapter as CursorAgentAdapter;
+
+        // List active Cursor sessions
+        app.get('/cursor/sessions', (_req: Request, res: Response) => {
+          const sessions = cursorAdapter.sessionStore.list();
+          res.json({
+            sessions: sessions.map(s => ({
+              id: s.id,
+              workspace: s.workspace,
+              model: s.model,
+              turns: s.turnCount,
+              created: s.createdAt.toISOString(),
+              lastUsed: s.lastUsedAt.toISOString(),
+            })),
+            active: cursorAdapter.sessionStore.lastSession,
+          });
+        });
+
+        // Get specific session details
+        app.get('/cursor/sessions/:id', (req: Request<{ id: string }>, res: Response) => {
+          const session = cursorAdapter.sessionStore.get(req.params.id);
+          if (!session) {
+            return res.status(404).json({ error: { message: 'Session not found' } });
+          }
+          res.json({
+            id: session.id,
+            workspace: session.workspace,
+            model: session.model,
+            turns: session.turnCount,
+            created: session.createdAt.toISOString(),
+            lastUsed: session.lastUsedAt.toISOString(),
+          });
+        });
+
+        // Start a new conversation (clear session continuity)
+        app.post('/cursor/sessions/new', (_req: Request, res: Response) => {
+          cursorAdapter.sessionStore.clear();
+          res.json({ status: 'ok', message: 'Session cleared — next task starts fresh' });
+        });
+
+        // Get supported models (proxy to cursor-agent models)
+        app.get('/cursor/models', async (_req: Request, res: Response) => {
+          try {
+            const { execFile: ef } = await import('node:child_process');
+            const { promisify: prom } = await import('node:util');
+            const efAsync = prom(ef);
+            const { stdout } = await efAsync(cursorAdapter.binary, ['models'], { timeout: 10000 }) as { stdout: string };
+            // Parse model list (one per line, format: "model-id - Display Name")
+            const models = stdout.trim().split('\n')
+              .filter((line: string) => line.includes(' - '))
+              .map((line: string) => {
+                const parts = line.split(' - ');
+                const id = parts[0]?.trim() ?? '';
+                const name = parts.slice(1).join(' - ').trim();
+                return { id, name };
+              });
+            res.json({ models, default: cursorAdapter.defaultModel });
+          } catch (err: any) {
+            res.status(500).json({ error: { message: err.message } });
+          }
+        });
+
+        // Enhanced health with session info
+        app.get('/health', (_req: Request, res: Response) => {
+          res.json({
+            status: 'ok',
+            agent: name,
+            mode: adapter.mode,
+            tier: adapter.tier,
+            sessions: cursorAdapter.sessionStore.list().length,
+            activeSession: cursorAdapter.sessionStore.lastSession,
+            defaultModel: cursorAdapter.defaultModel,
+            capabilities: {
+              multiTurn: true,
+              sessionManagement: true,
+              modelSelection: true,
+              worktreeIsolation: cursorAdapter.useWorktrees,
+              streaming: true,
+              planMode: true,
+            },
+          });
+        });
+      }
     },
   };
 }
