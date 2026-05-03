@@ -21,6 +21,7 @@ async function loadAdapters(): Promise<Array<new () => BaseAdapter>> {
     { module: "@fangai/adapter-aider", exportName: "AiderAdapter" },
     { module: "@fangai/adapter-claude", exportName: "ClaudeAdapter" },
     { module: "@fangai/adapter-codex", exportName: "CodexAdapter" },
+    { module: "@fangai/adapter-cursor", exportName: "CursorAdapter" },
     { module: "@fangai/adapter-opencode", exportName: "OpenCodeAdapter" },
     { module: "@fangai/adapter-generic", exportName: "GenericAdapter" },
   ];
