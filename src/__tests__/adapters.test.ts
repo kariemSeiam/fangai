@@ -61,6 +61,56 @@ describe('PiAdapter', () => {
     if (events[0].type === 'status') expect(events[0].state).toBe('completed');
   });
 
+  it('parses ready as working connection', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'ready' }));
+    expect(events[0]?.type).toBe('status');
+    if (events[0]?.type === 'status') expect(events[0].state).toBe('working');
+  });
+
+  it('formats steer when metadata.pi directs', () => {
+    const steerTask = {
+      id: 's1',
+      message: 'nudge harder',
+      context: { metadata: { pi: { inputType: 'steer' } } },
+    };
+    const input = adapter.formatInput(steerTask);
+    expect(JSON.parse(input.trim()).type).toBe('steer');
+  });
+
+  it('includes streamingBehavior followUp on prompts', () => {
+    const t = {
+      id: 'p1',
+      message: 'multi',
+      context: { metadata: { pi: { streamingBehavior: 'followUp' } } },
+    };
+    const body = JSON.parse(adapter.formatInput(t).trim()) as Record<string, unknown>;
+    expect(body.streamingBehavior).toBe('followUp');
+  });
+
+  it('parses auto_compaction telemetry', () => {
+    const start = adapter.parseLine(JSON.stringify({ type: 'auto_compaction_start' }));
+    expect(start.some(e => e.type === 'protocol-log')).toBe(true);
+    expect(start.some(e => e.type === 'status')).toBe(true);
+    const end = adapter.parseLine(JSON.stringify({ type: 'auto_compaction_end' }));
+    expect(end[0]?.type).toBe('protocol-log');
+  });
+
+  it('parses host_tool_call envelope', () => {
+    const ev = adapter.parseLine(JSON.stringify({
+      type: 'host_tool_call',
+      id: 'h1',
+      toolCallId: 'toolu_z',
+      toolName: 'echo_host',
+      arguments: { ok: true },
+    }));
+    expect(ev[0]?.type).toBe('host-tool-request');
+    if (ev[0]?.type === 'host-tool-request') {
+      expect(ev[0].requestId).toBe('h1');
+      expect(ev[0].toolCallId).toBe('toolu_z');
+      expect(ev[0].tool).toBe('echo_host');
+    }
+  });
+
   it('parses turn_end as completed', () => {
     const events = adapter.parseLine(JSON.stringify({ type: 'turn_end' }));
     expect(events[0].type).toBe('status');

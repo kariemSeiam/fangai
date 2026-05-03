@@ -31,7 +31,43 @@ export type AdapterEvent =
   | { type: 'tool-result'; tool: string; output: string; isError?: boolean }
   | { type: 'thinking'; text: string }
   | { type: 'status'; state: 'working' | 'completed' | 'failed' | 'input-required' }
-  | { type: 'error'; message: string; code?: string };
+  | { type: 'error'; message: string; code?: string }
+  /** Pi RPC: Pi requested execution of a host-registered tool (reverse direction vs agent tool_execution_*). */
+  | { type: 'host-tool-request'; requestId: string; toolCallId: string; tool: string; input: Record<string, unknown> }
+  /** Pi RPC: cancellation for a pending `host_tool_call` (identified by outbound `targetId`). */
+  | { type: 'host-tool-cancel'; cancelId: string; targetRequestId: string }
+  /** Non-fatal protocol telemetry (compaction milestones, todos, Pi-internal signals like ttsr). */
+  | { type: 'protocol-log'; subtype: string; detail?: Record<string, unknown> };
+
+/** Content shape accepted by oh-my-pi `host_tool_result` (subset of AgentToolResult). */
+export type RpcHostToolResultContent = ReadonlyArray<Record<string, unknown>>;
+
+export interface RpcParsedResponse {
+  command?: string;
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}
+
+/**
+ * Executes a Pi `host_tool_call`. Must return fragments suitable for `{ result: { content } }`.
+ * Use `abortSignal` to cooperatively abort when Pi emits `host_tool_cancel`.
+ */
+export type RpcHostToolExecutor = (
+  ctx: {
+    requestId: string;
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    abortSignal: AbortSignal;
+  },
+) => Promise<{ content: RpcHostToolResultContent; isError?: boolean }>;
+
+/** Optional hooks for adapters that need to bind/unbind a PersistentProcess singleton. */
+export interface PersistentAttachableAdapter {
+  attachPersistent(proc: PersistentProcess): void | Promise<void>;
+  detachPersistent?(): void | Promise<void>;
+}
 
 export interface AgentAdapter {
   readonly id: string;
@@ -203,8 +239,11 @@ export class ProcessManager {
 // Lines are routed to the active task. When a task completes (status event),
 // the next queued task becomes active.
 //
-// Also handles Pi's extension UI dialog protocol: auto-responds to
-// select/confirm/input/editor requests so the agent doesn't hang.
+// Pi / oh-my-pi additions:
+// - `waitUntilReady()` — first `{ "type":"ready" }` from stdout before commands
+// - `sendRpcCommand` — stdin JSON-RPC-style commands correlated by optional `id`
+// - Host tool callbacks — executes `host_tool_call` writes `host_tool_result`
+// Extension UI responses — auto-respond so the agent doesn't hang.
 
 export class PersistentProcess {
   private proc: ChildProcess | null = null;
@@ -219,6 +258,21 @@ export class PersistentProcess {
   private taskQueue: string[] = [];
   /** The currently active task ID (receiving stdout lines). */
   private activeTaskId: string | null = null;
+
+  /** Correlates `{ type:'response', id }` frames to pending `sendRpcCommand` awaits. */
+  private pendingResponses = new Map<string, {
+    settle: (r: RpcParsedResponse | null) => void;
+    timer: NodeJS.Timeout;
+  }>();
+
+  private readyEmitted = false;
+  private readyWaiters: Array<{ resolve: () => void; reject: (e: Error) => void }> = [];
+  private rpcDefaultTimeoutMs = 120_000;
+
+  private rpcHostExecutor: RpcHostToolExecutor | undefined;
+  /** requestId (`host_tool_call.id`) → abort when Pi sends matching targetId cancel */
+  private hostAbortByRequestId = new Map<string, AbortController>();
+
   /** Crash callback — fired when process exits unexpectedly with pending handlers. */
   readonly onCrash?: (crashedTaskId: string, remainingCount: number) => void;
 
@@ -231,6 +285,206 @@ export class PersistentProcess {
     this.opts = opts;
     this.onCrash = callbacks?.onCrash;
   }
+
+  /** Replace / clear custom host tool execution (wired by PiAdapter / BridgeExecutor). */
+  setHostToolExecutor(exec: RpcHostToolExecutor | undefined): void {
+    this.rpcHostExecutor = exec;
+  }
+
+  /** Default timeout for correlated RPC awaits (milliseconds). */
+  setRpcTimeoutMs(ms: number): void {
+    this.rpcDefaultTimeoutMs = Math.max(1000, ms);
+  }
+
+  /**
+   * Resolves once the child emits `{ "type": "ready" }` over stdout,
+   * or rejects on timeout after `ensure()` spawned the process.
+   */
+  async waitUntilReady(timeoutMs = 30_000): Promise<void> {
+    if (this.readyEmitted) return;
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('Timed out waiting for Pi ready frame')), timeoutMs);
+      this.readyWaiters.push({
+        resolve: () => { clearTimeout(t); resolve(); },
+        reject: (e) => { clearTimeout(t); reject(e); },
+      });
+    });
+  }
+
+  /**
+   * Send a Pi RPC command payload (stdin JSON line). Automatically assigns `id` if omitted.
+   * Resolves only on matching `{ type:"response", id }` stdout line (consumes internally).
+   *
+   * Excludes prompts / steer / abort / follow_up flows where you want streaming — use adapter `write`/`formatInput` instead.
+   */
+  async sendRpcCommand(
+    command: Record<string, unknown>,
+    opts?: { timeoutMs?: number; correlationId?: string },
+  ): Promise<RpcParsedResponse> {
+    if (!this.isAlive || !this.proc?.stdin) {
+      throw new Error('Persistent process is not alive');
+    }
+    const cid = opts?.correlationId ?? (command.id !== undefined ? String(command.id) : randomUUID());
+    const body: Record<string, unknown> = { ...command, id: cid };
+
+    const timeoutMs = opts?.timeoutMs ?? this.rpcDefaultTimeoutMs;
+
+    const cmdHint = typeof body.type === 'string' ? body.type : 'rpc';
+
+    const responsePromise = new Promise<RpcParsedResponse>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingResponses.delete(cid);
+        resolve({
+          success: false,
+          error: `RPC correlation timeout (${timeoutMs}ms) for command ${cmdHint}`,
+        });
+      }, timeoutMs);
+      this.pendingResponses.set(cid, { settle: (r) => { clearTimeout(timer); resolve(r ?? { success: false, error: 'Empty RPC response' }); }, timer });
+    });
+
+    const line = JSON.stringify(body) + '\n';
+    this.proc.stdin.write(line);
+
+    return responsePromise;
+  }
+
+  /** Internal: correlate or route a stdout JSON frame before forwarding to adapters. Returns true if swallowed. */
+  private dispatchStdoutJson(parsed: Record<string, unknown>): boolean {
+    // Extension UI dialogs — mutate stdin (must precede swallow rules)
+    if (parsed.type === 'extension_ui_request') {
+      this.handleExtensionUIParsed(parsed);
+      return false;
+    }
+
+    if (parsed.type === 'ready') {
+      this.signalReadyDone();
+      return false;
+    }
+
+    if (parsed.type === 'response') {
+      const rid = parsed.id !== undefined ? String(parsed.id) : '';
+      if (rid && this.pendingResponses.has(rid)) {
+        const slot = this.pendingResponses.get(rid)!;
+        this.pendingResponses.delete(rid);
+        const success = !!parsed.success;
+        const parsedResp: RpcParsedResponse = success
+          ? { success: true, command: typeof parsed.command === 'string' ? parsed.command : undefined, data: parsed.data }
+          : {
+              success: false,
+              command: typeof parsed.command === 'string' ? parsed.command : undefined,
+              error: typeof parsed.error === 'string' ? parsed.error : 'RPC failure',
+            };
+        slot.settle(parsedResp);
+        return true;
+      }
+      return false;
+    }
+
+    if (parsed.type === 'host_tool_call' && typeof parsed.id === 'string' && this.rpcHostExecutor) {
+      void this.invokeHostToolAndReply(parsed).catch(() => {
+        /* host_tool_reply sent inside */
+      });
+      return false;
+    }
+
+    if (parsed.type === 'host_tool_cancel' && typeof parsed.targetId === 'string') {
+      const ac = this.hostAbortByRequestId.get(parsed.targetId);
+      ac?.abort();
+      return false;
+    }
+
+    return false;
+  }
+
+  private signalReadyDone(): void {
+    if (this.readyEmitted) return;
+    this.readyEmitted = true;
+    for (const { resolve } of this.readyWaiters) {
+      try { resolve(); } catch { /* noop */ }
+    }
+    this.readyWaiters.length = 0;
+  }
+
+  private async invokeHostToolAndReply(raw: Record<string, unknown>): Promise<void> {
+    const exec = this.rpcHostExecutor;
+    if (!exec || !this.proc?.stdin) return;
+
+    const id = typeof raw.id === 'string' ? raw.id : '';
+    const toolCallId = typeof raw.toolCallId === 'string' ? raw.toolCallId : '';
+    const toolName = typeof raw.toolName === 'string' ? raw.toolName : 'unknown_tool';
+    const args = typeof raw.arguments === 'object' && raw.arguments !== null ? raw.arguments as Record<string, unknown> : {};
+
+    const ac = new AbortController();
+    this.hostAbortByRequestId.set(id, ac);
+
+    const sendResult = (result: RpcHostToolResultContent, isError?: boolean): void => {
+      if (!this.proc?.stdin) return;
+      const frame: Record<string, unknown> = {
+        type: 'host_tool_result',
+        id,
+        result: { content: [...result] },
+      };
+      if (isError) frame.isError = true;
+      this.proc.stdin.write(JSON.stringify(frame) + '\n');
+    };
+
+    try {
+      const outcome = await exec({
+        requestId: id,
+        toolCallId,
+        toolName,
+        args,
+        abortSignal: ac.signal,
+      });
+      sendResult([...outcome.content], !!outcome.isError);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendResult([{ type: 'text', text: `Host tool error: ${msg}` }], true);
+    } finally {
+      this.hostAbortByRequestId.delete(id);
+    }
+  }
+
+  /** Reset Pi-side waiters/maps when spawning a replacement process after death. */
+  private resetStatefulSession(): void {
+    for (const { reject } of this.readyWaiters) {
+      try { reject(new Error('Persistent process respawn — ready wait aborted')); } catch { /* noop */ }
+    }
+    this.readyWaiters.length = 0;
+
+    for (const [, pend] of [...this.pendingResponses]) {
+      try { pend.settle({ success: false, error: 'Persistent session reset — RPC await cleared' }); } catch { /* noop */ }
+      clearTimeout(pend.timer);
+    }
+    this.pendingResponses.clear();
+    this.readyEmitted = false;
+    this.hostAbortByRequestId.clear();
+  }
+
+  private routeLineToActiveTask(line: string): void {
+    if (!this.activeTaskId) return;
+    const handler = this.taskHandlers.get(this.activeTaskId);
+    handler?.(line);
+  }
+
+  private ingestStdoutLine(line: string): void {
+    let obj: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(line);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        this.routeLineToActiveTask(line);
+        return;
+      }
+      obj = parsed as Record<string, unknown>;
+    } catch {
+      this.routeLineToActiveTask(line);
+      return;
+    }
+
+    const swallowedCorrelation = this.dispatchStdoutJson(obj);
+    if (!swallowedCorrelation) this.routeLineToActiveTask(line);
+  }
+
 
   /**
    * Register a handler for a task. The handler will receive stdout lines
@@ -274,6 +528,8 @@ export class PersistentProcess {
   async ensure(): Promise<void> {
     if (this.proc && this.proc.exitCode === null) return; // still alive
 
+    this.resetStatefulSession();
+
     this.proc = spawn(this.cmd, this.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: this.opts.cwd,
@@ -282,14 +538,7 @@ export class PersistentProcess {
 
     // LF-only JSONL reader — protocol compliant
     this.detachReader = attachJsonlReader(this.proc.stdout!, (line) => {
-      // Handle Pi's extension UI dialog protocol — auto-respond to unblock agent
-      this.handleExtensionUI(line);
-
-      // Route line to the active task's handler
-      if (this.activeTaskId) {
-        const handler = this.taskHandlers.get(this.activeTaskId);
-        if (handler) handler(line);
-      }
+      this.ingestStdoutLine(line);
     });
 
     this.proc.stderr!.on('data', (_chunk: Buffer) => {
@@ -298,13 +547,18 @@ export class PersistentProcess {
 
     this.proc.on('exit', () => {
       if (this.detachReader) { this.detachReader(); this.detachReader = null; }
-      // Notify all pending task handlers of the crash
+
+      for (const [, pend] of [...this.pendingResponses]) {
+        try { pend.settle({ success: false, error: 'Persistent process exited before RPC response arrived' }); } catch { /* noop */ }
+        clearTimeout(pend.timer);
+      }
+      this.pendingResponses.clear();
+
       if (this.activeTaskId && this.taskHandlers.size > 0) {
         const crashedId = this.activeTaskId;
         const remaining = this.taskHandlers.size;
-        // Deliver synthetic error to each handler
         const errorLine = JSON.stringify({ type: 'error', message: 'Process crashed unexpectedly' });
-        for (const [taskId, handler] of this.taskHandlers) {
+        for (const [, handler] of this.taskHandlers) {
           try { handler(errorLine); } catch { /* swallow handler errors during crash */ }
         }
         this.onCrash?.(crashedId, remaining);
@@ -329,26 +583,18 @@ export class PersistentProcess {
    * Fire-and-forget methods (notify, setStatus, setWidget, setTitle,
    * set_editor_text) don't need a response — correctly ignored.
    */
-  private handleExtensionUI(line: string): void {
-    let e: any;
-    try { e = JSON.parse(line); } catch { return; }
+  private handleExtensionUIParsed(e: Record<string, unknown>): void {
+    if (typeof e.id !== 'string') return;
 
-    if (e.type !== 'extension_ui_request') return;
-
+    const method = typeof e.method === 'string' ? e.method : '';
     const dialogMethods = new Set(['select', 'confirm', 'input', 'editor']);
-    if (!dialogMethods.has(e.method)) return;
+    if (!dialogMethods.has(method)) return;
 
-    // Auto-respond with safe defaults to unblock the agent
-    let response: any;
-    if (e.method === 'confirm') {
-      response = { type: 'extension_ui_response', id: e.id, confirmed: false };
-    } else if (e.method === 'select') {
-      // Cancel — extension receives undefined
-      response = { type: 'extension_ui_response', id: e.id, cancelled: true };
-    } else {
-      // input/editor — cancel
-      response = { type: 'extension_ui_response', id: e.id, cancelled: true };
-    }
+    const id = e.id;
+    let response: Record<string, unknown>;
+    if (method === 'confirm') response = { type: 'extension_ui_response', id, confirmed: false };
+    else if (method === 'select') response = { type: 'extension_ui_response', id, cancelled: true };
+    else response = { type: 'extension_ui_response', id, cancelled: true };
 
     this.write(JSON.stringify(response) + '\n');
   }
@@ -361,6 +607,18 @@ export class PersistentProcess {
   async kill(): Promise<void> {
     if (this.proc) {
       if (this.detachReader) { this.detachReader(); this.detachReader = null; }
+
+      for (const [, pend] of [...this.pendingResponses]) {
+        try { pend.settle({ success: false, error: 'Persistent process killed' }); } catch { /* noop */ }
+        clearTimeout(pend.timer);
+      }
+      this.pendingResponses.clear();
+      for (const { reject } of this.readyWaiters) {
+        try { reject(new Error('Persistent process killed')); } catch { /* noop */ }
+      }
+      this.readyWaiters.length = 0;
+      this.hostAbortByRequestId.clear();
+
       this.proc.kill('SIGTERM');
       this.proc = null;
       this.activeTaskId = null;
