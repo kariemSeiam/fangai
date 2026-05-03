@@ -249,6 +249,30 @@ describe('PersistentProcess', () => {
     expect(task2Lines.some(l => l.includes('for task-1'))).toBe(false);
   });
 
+  it('writeWhenActive defers stdin for queued tasks until promotion', async () => {
+    pp = new PersistentProcess('cat', [], {});
+    await pp.ensure();
+
+    const lines1: string[] = [];
+    const lines2: string[] = [];
+
+    pp.setLineHandler('t1', line => lines1.push(line));
+    pp.writeWhenActive('t1', 'immediate\n');
+    await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+    pp.setLineHandler('t2', line => lines2.push(line));
+    pp.writeWhenActive('t2', 'deferred-until-promoted\n');
+    await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+    expect(lines2.some(l => l.includes('deferred-until-promoted'))).toBe(false);
+
+    pp.removeLineHandler('t1');
+    await new Promise<void>(resolve => setTimeout(resolve, 150));
+
+    expect(lines1.some(l => l.includes('immediate'))).toBe(true);
+    expect(lines2.some(l => l.includes('deferred-until-promoted'))).toBe(true);
+  });
+
   it('notifies handlers on unexpected process death', async () => {
     const crashInfo: { id: string; count: number }[] = [];
     pp = new PersistentProcess('cat', [], {}, {
