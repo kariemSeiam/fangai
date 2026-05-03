@@ -309,6 +309,16 @@ export class CursorAdapter implements AgentAdapter {
     }
 
     switch (obj.type) {
+      // Cursor stream-json assistant message — text nested at message.content[].text
+      case 'assistant': {
+        const content = obj.message?.content;
+        if (!Array.isArray(content)) return [];
+        const text = content
+          .filter((p: any) => p.type === 'text')
+          .map((p: any) => p.text)
+          .join('');
+        return text ? [{ type: 'text-delta', text }] : [];
+      }
       case 'text_delta':
       case 'content_block_delta':
         return (obj.text || obj.delta?.text) ? [{ type: 'text-delta', text: obj.text || obj.delta.text }] : [];
@@ -319,6 +329,9 @@ export class CursorAdapter implements AgentAdapter {
         return [{ type: 'tool-result', tool: String(obj.tool_use_id || 'unknown'), output: typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content), isError: obj.is_error }];
       case 'result':
         return [{ type: 'status', state: 'completed' }];
+      case 'system':
+      case 'user':
+        return [];
       case 'error':
         return [{ type: 'error', message: String(obj.message || 'Unknown error') }];
       default:

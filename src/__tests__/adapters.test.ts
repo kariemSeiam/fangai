@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PiAdapter,
   ClaudeAdapter,
+  CursorAdapter,
   AiderAdapter,
   CodexAdapter,
   GeminiAdapter,
@@ -351,6 +352,117 @@ describe('OpenCodeAdapter', () => {
     const events = adapter.parseLine(JSON.stringify({ type: 'done' }));
     expect(events[0].type).toBe('status');
     if (events[0].type === 'status') expect(events[0].state).toBe('completed');
+  });
+});
+
+// ─── CursorAdapter ────────────────────────────────────────────────────────
+
+describe('CursorAdapter', () => {
+  const adapter = new CursorAdapter();
+
+  it('has correct metadata', () => {
+    expect(adapter.id).toBe('cursor');
+    expect(adapter.tier).toBe(1);
+    expect(adapter.mode).toBe('oneshot');
+    expect(adapter.binary).toBe('agent');
+  });
+
+  it('parses assistant message with nested content', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Here is the fix for auth.ts' }],
+      },
+    }));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('text-delta');
+    if (events[0].type === 'text-delta') expect(events[0].text).toBe('Here is the fix for auth.ts');
+  });
+
+  it('parses assistant with multiple content blocks', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'assistant',
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Part one. ' },
+          { type: 'text', text: 'Part two.' },
+        ],
+      },
+    }));
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('text-delta');
+    if (events[0].type === 'text-delta') expect(events[0].text).toBe('Part one. Part two.');
+  });
+
+  it('returns empty for assistant with no content array', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant' },
+    }));
+    expect(events).toHaveLength(0);
+  });
+
+  it('returns empty for assistant with empty content', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'assistant',
+      message: { role: 'assistant', content: [] },
+    }));
+    expect(events).toHaveLength(0);
+  });
+
+  it('parses text_delta events', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'text_delta', text: 'streaming text',
+    }));
+    expect(events[0].type).toBe('text-delta');
+    if (events[0].type === 'text-delta') expect(events[0].text).toBe('streaming text');
+  });
+
+  it('parses content_block_delta with nested delta.text', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'content_block_delta', delta: { text: 'delta text' },
+    }));
+    expect(events[0].type).toBe('text-delta');
+    if (events[0].type === 'text-delta') expect(events[0].text).toBe('delta text');
+  });
+
+  it('parses result as completed', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'result' }));
+    expect(events[0].type).toBe('status');
+    if (events[0].type === 'status') expect(events[0].state).toBe('completed');
+  });
+
+  it('parses system events as empty', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'system', subtype: 'init', session_id: 'abc',
+    }));
+    expect(events).toHaveLength(0);
+  });
+
+  it('parses user events as empty', () => {
+    const events = adapter.parseLine(JSON.stringify({
+      type: 'user', message: { role: 'user', content: [] },
+    }));
+    expect(events).toHaveLength(0);
+  });
+
+  it('parses error type', () => {
+    const events = adapter.parseLine(JSON.stringify({ type: 'error', message: 'fail' }));
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') expect(events[0].message).toBe('fail');
+  });
+
+  it('returns empty for blank lines', () => {
+    expect(adapter.parseLine('')).toHaveLength(0);
+    expect(adapter.parseLine('   ')).toHaveLength(0);
+  });
+
+  it('passes non-JSON text as text-delta', () => {
+    const events = adapter.parseLine('some plain text');
+    expect(events[0].type).toBe('text-delta');
+    if (events[0].type === 'text-delta') expect(events[0].text).toContain('some plain text');
   });
 });
 
