@@ -1,0 +1,550 @@
+/**
+ * Cursor Agent adapter — full-featured integration
+ *
+ * Two modes:
+ * 1. CLI mode (oneshot) — wraps `cursor-agent` CLI with --print --output-format stream-json
+ *    Supports: multi-turn via --continue/--resume, model selection, worktree isolation,
+ *    streaming partial output, MCP servers, plan mode.
+ * 2. SDK mode (persistent) — uses @cursor/sdk for stateful, long-running agents
+ *    with full multi-turn conversations, tool streaming, thinking events.
+ *
+ * The stream-json format from cursor-agent outputs these event types:
+ *   - { type: "system", subtype: "init", session_id, model, ... }
+ *   - { type: "user", message: { role: "user", content: [...] } }
+ *   - { type: "assistant", message: { role: "assistant", content: [{ type: "text", text }] } }
+ *   - { type: "tool_call", subtype: "started"|"completed", call_id, tool_call: { shellToolCall: { args, result } } }
+ *   - { type: "result", subtype: "success"|"error", duration_ms, usage, session_id }
+ *
+ * NOT the Anthropic-style events (text_delta, content_block_delta) that the old adapter assumed.
+ */
+
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { randomUUID } from 'node:crypto';
+import type { AgentAdapter, AgentTask, FangConfig, AdapterEvent, DetectionResult } from './core.ts';
+
+const execFileAsync = promisify(execFile);
+
+// ─── Session Management ────────────────────────────────────────────────────
+
+export interface CursorSession {
+  id: string;
+  createdAt: Date;
+  lastUsedAt: Date;
+  workspace: string;
+  model: string;
+  turnCount: number;
+}
+
+/**
+ * In-memory session store for multi-turn Cursor conversations.
+ * Tracks session_ids from cursor-agent's --continue/--resume lifecycle.
+ */
+export class CursorSessionStore {
+  private sessions = new Map<string, CursorSession>();
+  private lastSessionId: string | null = null;
+
+  /** Register a new session from cursor-agent output */
+  register(sessionId: string, workspace: string, model: string): void {
+    const existing = this.sessions.get(sessionId);
+    if (existing) {
+      existing.lastUsedAt = new Date();
+      existing.turnCount++;
+    } else {
+      this.sessions.set(sessionId, {
+        id: sessionId,
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        workspace,
+        model,
+        turnCount: 1,
+      });
+    }
+    this.lastSessionId = sessionId;
+  }
+
+  /** Get the last active session ID for --continue */
+  get lastSession(): string | null {
+    return this.lastSessionId;
+  }
+
+  /** Get a specific session by ID */
+  get(sessionId: string): CursorSession | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  /** List all sessions */
+  list(): CursorSession[] {
+    return Array.from(this.sessions.values()).sort(
+      (a, b) => b.lastUsedAt.getTime() - a.lastUsedAt.getTime()
+    );
+  }
+
+  /** Clear all sessions */
+  clear(): void {
+    this.sessions.clear();
+    this.lastSessionId = null;
+  }
+}
+
+// ─── CLI Mode Adapter ──────────────────────────────────────────────────────
+
+export interface CursorAdapterOptions {
+  /** Binary name (default: 'cursor-agent') */
+  binary?: string;
+  /** Default model (default: 'composer-2-fast') */
+  defaultModel?: string;
+  /** Enable streaming partial output deltas (default: true) */
+  streamPartial?: boolean;
+  /** Auto-approve all tool calls (default: true for headless) */
+  yolo?: boolean;
+  /** Trust workspace without prompting (default: true for headless) */
+  trust?: boolean;
+  /** Max session turns before auto-reset (default: 50) */
+  maxSessionTurns?: number;
+  /** Use git worktrees for isolation (default: false) */
+  useWorktrees?: boolean;
+  /** Additional MCP servers to attach */
+  mcpServers?: string[];
+  /** Session store (shared across adapter instances for multi-chat) */
+  sessionStore?: CursorSessionStore;
+}
+
+/**
+ * CursorAgentAdapter — CLI mode, oneshot per task with multi-turn session continuity.
+ *
+ * How multi-turn works:
+ * 1. First task: cursor-agent --print --output-format stream-json --yolo --trust "task"
+ *    → captures session_id from the system init event
+ * 2. Follow-up task: cursor-agent --print --output-format stream-json --continue "task"
+ *    → same session_id, maintains context
+ * 3. New conversation: cursor-agent --print --output-format stream-json "task"
+ *    → new session_id
+ *
+ * Each Fang task is a separate cursor-agent process, but sessions persist server-side
+ * at Cursor. The adapter tracks session_ids to route follow-ups via --continue.
+ */
+export class CursorAgentAdapter implements AgentAdapter {
+  readonly id = 'cursor-agent';
+  readonly tier = 1 as const;
+  readonly displayName = 'Cursor Agent';
+  readonly mode = 'oneshot' as const;
+
+  readonly binary: string;
+  readonly defaultModel: string;
+  readonly streamPartial: boolean;
+  readonly yolo: boolean;
+  readonly trust: boolean;
+  readonly maxSessionTurns: number;
+  readonly useWorktrees: boolean;
+  readonly mcpServers: string[];
+  readonly sessionStore: CursorSessionStore;
+
+  skills = [
+    { id: 'code', name: 'Code generation & editing', tags: ['typescript', 'python', 'react', 'go', 'rust'] },
+    { id: 'reasoning', name: 'Complex reasoning', tags: ['reasoning', 'architecture', 'debugging', 'design'] },
+    { id: 'plan', name: 'Planning & analysis', tags: ['plan', 'review', 'refactor', 'audit'] },
+    { id: 'debug', name: 'Debug & fix', tags: ['debug', 'error', 'fix', 'stack-trace'] },
+    { id: 'multi-file', name: 'Multi-file refactoring', tags: ['refactor', 'rename', 'extract', 'move'] },
+    { id: 'test', name: 'Test writing & fixing', tags: ['test', 'jest', 'vitest', 'pytest'] },
+  ];
+
+  constructor(opts: CursorAdapterOptions = {}) {
+    this.binary = opts.binary ?? 'cursor-agent';
+    this.defaultModel = opts.defaultModel ?? 'composer-2-fast';
+    this.streamPartial = opts.streamPartial ?? true;
+    this.yolo = opts.yolo ?? true;
+    this.trust = opts.trust ?? true;
+    this.maxSessionTurns = opts.maxSessionTurns ?? 50;
+    this.useWorktrees = opts.useWorktrees ?? false;
+    this.mcpServers = opts.mcpServers ?? [];
+    this.sessionStore = opts.sessionStore ?? new CursorSessionStore();
+  }
+
+  buildArgs(task: AgentTask, config: FangConfig): string[] {
+    const args: string[] = [
+      '--print',
+      '--output-format', 'stream-json',
+    ];
+
+    // Streaming partial output (text deltas per token)
+    if (this.streamPartial) {
+      args.push('--stream-partial-output');
+    }
+
+    // Headless flags
+    if (this.yolo) args.push('--yolo');
+    if (this.trust) args.push('--trust');
+
+    // Model selection: from task metadata > config > default
+    const model = (task.context?.metadata?.model as string)
+      ?? config.agentFlags?.find((_, i, arr) => arr[i - 1] === '--model')
+      ?? this.defaultModel;
+    args.push('--model', model);
+
+    // Workspace: from task context > config
+    const workspace = task.context?.workdir ?? config.workdir;
+    if (workspace) {
+      args.push('--workspace', workspace);
+    }
+
+    // Session continuity: continue last session or resume specific one
+    const resumeSession = task.context?.metadata?.resumeSession as string | undefined;
+    const continueLast = task.context?.metadata?.continueLast as boolean | undefined;
+    const newChat = task.context?.metadata?.newChat as boolean | undefined;
+
+    if (resumeSession) {
+      args.push('--resume', resumeSession);
+    } else if (continueLast && this.sessionStore.lastSession) {
+      args.push('--continue');
+    } else if (!newChat && this.sessionStore.lastSession) {
+      // Default: continue if we have a session and user didn't opt out
+      const session = this.sessionStore.get(this.sessionStore.lastSession);
+      if (session && session.turnCount < this.maxSessionTurns) {
+        args.push('--continue');
+      }
+      // If session hit max turns, start fresh (no --continue)
+    }
+
+    // Plan mode (read-only)
+    if (task.context?.metadata?.planMode) {
+      args.push('--plan');
+    }
+
+    // Worktree isolation
+    if (this.useWorktrees && task.context?.metadata?.isolated !== false) {
+      const worktreeName = task.context?.metadata?.worktreeName as string | undefined;
+      if (worktreeName) {
+        args.push('--worktree', worktreeName);
+      } else {
+        args.push('--worktree');
+      }
+    }
+
+    // MCP servers
+    for (const mcp of this.mcpServers) {
+      args.push('--approve-mcps');
+      // MCP servers configured in ~/.cursor/mcp.json or project .cursor/mcp.json
+    }
+
+    return args;
+  }
+
+  formatInput(task: AgentTask): string {
+    // The prompt is passed as the first positional argument to cursor-agent,
+    // NOT via stdin. But since Fang pipes via stdin, we return the message.
+    // cursor-agent --print reads stdin as the prompt when no positional args given.
+    return task.message + '\n';
+  }
+
+  parseLine(line: string): AdapterEvent[] {
+    if (!line.trim()) return [];
+
+    let obj: any;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      // Non-JSON output — treat as raw text (cursor-agent startup messages, etc.)
+      return [{ type: 'text-delta', text: line.trimEnd() }];
+    }
+
+    switch (obj.type) {
+      // ── System init ─────────────────────────────────────────────────
+      case 'system': {
+        // Capture session_id for multi-turn continuity
+        if (obj.session_id) {
+          this.sessionStore.register(
+            obj.session_id,
+            obj.cwd ?? '',
+            obj.model ?? ''
+          );
+        }
+        return []; // Don't emit system events to A2A clients
+      }
+
+      // ── User echo ───────────────────────────────────────────────────
+      case 'user':
+        return []; // Don't echo user messages back
+
+      // ── Assistant text ──────────────────────────────────────────────
+      case 'assistant': {
+        const content = obj.message?.content;
+        if (!Array.isArray(content)) return [];
+
+        const events: AdapterEvent[] = [];
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            events.push({ type: 'text-delta', text: block.text });
+          }
+          // Thinking blocks could be here too in some models
+          if (block.type === 'thinking' && block.thinking) {
+            events.push({ type: 'thinking', text: block.thinking });
+          }
+        }
+        return events;
+      }
+
+      // ── Tool calls ──────────────────────────────────────────────────
+      case 'tool_call': {
+        const callData = obj.tool_call;
+
+        if (obj.subtype === 'started') {
+          // Extract tool name from the nested structure
+          const toolName = this.extractToolName(callData);
+          const description = this.extractToolDescription(callData);
+          return [{
+            type: 'tool-call',
+            tool: toolName,
+            input: { description, command: this.extractCommand(callData) },
+          }];
+        }
+
+        if (obj.subtype === 'completed') {
+          const result = this.extractToolResult(callData);
+          const isError = !result.success;
+
+          // Emit the tool output as text delta (the actual command output)
+          const events: AdapterEvent[] = [];
+          const stdout = result.stdout?.trim();
+          if (stdout) {
+            events.push({ type: 'text-delta', text: stdout });
+          }
+          events.push({
+            type: 'tool-result',
+            tool: this.extractToolName(callData),
+            output: stdout || (result.stderr?.trim() || 'done'),
+            isError,
+          });
+          return events;
+        }
+
+        return [];
+      }
+
+      // ── Result (completion) ─────────────────────────────────────────
+      case 'result': {
+        if (obj.subtype === 'error' || obj.is_error) {
+          return [{ type: 'error', message: obj.result || 'Cursor agent error' }];
+        }
+
+        const events: AdapterEvent[] = [];
+
+        // Emit the final result text if present (may duplicate streamed text)
+        // Only emit if it contains new info not already streamed
+        const resultText = obj.result;
+        if (resultText && typeof resultText === 'string' && resultText.trim()) {
+          // Result text is typically a summary — we already streamed the full output
+          // Don't re-emit to avoid duplication
+        }
+
+        events.push({ type: 'status', state: 'completed' });
+        return events;
+      }
+
+      // ── Status updates ──────────────────────────────────────────────
+      case 'status':
+        return [{ type: 'status', state: 'working' }];
+
+      // ── Errors ──────────────────────────────────────────────────────
+      case 'error':
+        return [{ type: 'error', message: String(obj.message || obj.error || 'Unknown cursor error') }];
+
+      // ── Fallback ────────────────────────────────────────────────────
+      default: {
+        // Try to extract text from unknown event shapes
+        if (obj.text) return [{ type: 'text-delta', text: obj.text }];
+        if (obj.result?.text) return [{ type: 'text-delta', text: obj.result.text }];
+        return [];
+      }
+    }
+  }
+
+  async detect(): Promise<DetectionResult | null> {
+    try {
+      const { stdout } = await execFileAsync('which', [this.binary], { timeout: 5000 });
+      const path = stdout.trim();
+
+      // Get version
+      let version = 'unknown';
+      try {
+        const { stdout: vOut } = await execFileAsync(this.binary, ['--version'], { timeout: 5000 });
+        const match = vOut.match(/(\d+\.\d+\.\d+(?:[-+.\w]*)?)/);
+        version = match ? match[1] : vOut.trim();
+      } catch {}
+
+      return { binary: this.binary, version, path, tier: 1, protocol: 'stream-json' };
+    } catch {
+      // Fallback: check common paths
+      try {
+        const { stdout } = await execFileAsync('which', ['agent'], { timeout: 5000 });
+        if (stdout.includes('cursor-agent') || stdout.includes('agent')) {
+          return { binary: 'agent', version: 'unknown', path: stdout.trim(), tier: 1, protocol: 'stream-json' };
+        }
+      } catch {}
+      return null;
+    }
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────
+
+  private extractToolName(callData: any): string {
+    if (!callData) return 'tool';
+    // Cursor-agent uses different property names per tool type
+    if (callData.shellToolCall) return 'shell';
+    if (callData.editToolCall) return 'edit_file';
+    if (callData.fileReadToolCall) return 'read_file';
+    if (callData.fileWriteToolCall) return 'write_file';
+    if (callData.fileEditToolCall) return 'edit_file';
+    if (callData.searchToolCall) return 'search';
+    if (callData.mcpToolCall) return 'mcp';
+    if (callData.globToolCall) return 'glob';
+    if (callData.lsToolCall) return 'ls';
+    if (callData.grepToolCall) return 'grep';
+    return 'tool';
+  }
+
+  private extractToolDescription(callData: any): string {
+    if (!callData) return '';
+    // Shell tool
+    if (callData.shellToolCall?.args?.description) return callData.shellToolCall.args.description;
+    if (callData.shellToolCall?.args?.command) return callData.shellToolCall.args.command;
+    // Edit tool
+    if (callData.editToolCall?.args?.path) return `Edit: ${callData.editToolCall.args.path}`;
+    // Read tool
+    if (callData.fileReadToolCall?.args?.path) return `Read: ${callData.fileReadToolCall.args.path}`;
+    return '';
+  }
+
+  private extractCommand(callData: any): string {
+    if (!callData) return '';
+    return callData.shellToolCall?.args?.command
+      ?? callData.editToolCall?.args?.path
+      ?? callData.fileReadToolCall?.args?.path
+      ?? '';
+  }
+
+  private extractToolResult(callData: any): { success: boolean; stdout: string; stderr: string } {
+    if (!callData) return { success: true, stdout: '', stderr: '' };
+
+    // Shell tool result
+    const shellResult = callData.shellToolCall?.result;
+    if (shellResult) {
+      if (shellResult.success) {
+        return {
+          success: true,
+          stdout: shellResult.success.stdout ?? '',
+          stderr: shellResult.success.stderr ?? '',
+        };
+      }
+      if (shellResult.error) {
+        return {
+          success: false,
+          stdout: shellResult.error.stdout ?? '',
+          stderr: shellResult.error.stderr ?? shellResult.error.message ?? '',
+        };
+      }
+    }
+
+    // Edit tool result
+    const editResult = callData.editToolCall?.result;
+    if (editResult) {
+      if (editResult.success) {
+        return {
+          success: true,
+          stdout: editResult.success.message ?? `Wrote ${editResult.success.linesAdded ?? '?'} lines`,
+          stderr: '',
+        };
+      }
+      if (editResult.error) {
+        return { success: false, stdout: '', stderr: editResult.error.message ?? 'Edit failed' };
+      }
+    }
+
+    return { success: true, stdout: 'done', stderr: '' };
+  }
+}
+
+// ─── SDK Mode Adapter ──────────────────────────────────────────────────────
+
+/**
+ * CursorSDKAdapter — persistent mode using @cursor/sdk.
+ *
+ * Unlike the CLI adapter which spawns a new process per task,
+ * the SDK adapter maintains a long-lived Agent instance with full
+ * multi-turn conversation state.
+ *
+ * Benefits over CLI mode:
+ * - True persistent sessions (agent.send() maintains context automatically)
+ * - No process spawn overhead between turns
+ * - Direct access to SDK features: Agent.list, Agent.resume, Run.cancel
+ * - Better streaming with typed events (SDKMessage union)
+ * - Cloud agent support (bc- prefix agents)
+ *
+ * Requires: @cursor/sdk installed, CURSOR_API_KEY set
+ */
+export class CursorSDKAdapter implements AgentAdapter {
+  readonly id = 'cursor-sdk';
+  readonly binary = 'cursor-agent'; // Binary for detection
+  readonly tier = 1 as const;
+  readonly displayName = 'Cursor SDK';
+  readonly mode = 'persistent' as const; // Key difference — persistent mode
+
+  skills = [
+    { id: 'code', name: 'Code generation & editing', tags: ['typescript', 'python', 'react', 'go', 'rust'] },
+    { id: 'reasoning', name: 'Complex reasoning', tags: ['reasoning', 'architecture', 'debugging'] },
+    { id: 'plan', name: 'Planning & analysis', tags: ['plan', 'review', 'refactor'] },
+    { id: 'multi-turn', name: 'Long conversations', tags: ['multi-turn', 'session', 'persistent'] },
+    { id: 'cloud', name: 'Cloud agents', tags: ['cloud', 'sandbox', 'pr'] },
+  ];
+
+  buildArgs(_task: AgentTask, _config: FangConfig): string[] {
+    // SDK mode doesn't use CLI args — it uses the SDK API directly.
+    // This method exists for the adapter interface but is not used in persistent mode.
+    return [];
+  }
+
+  formatInput(task: AgentTask): string {
+    return task.message;
+  }
+
+  parseLine(_line: string): AdapterEvent[] {
+    // SDK mode doesn't use line-based parsing — it uses typed SDKMessage events.
+    // The BridgeExecutor should use executeWithSDK() instead of parseLine()
+    // for this adapter.
+    return [];
+  }
+
+  async detect(): Promise<DetectionResult | null> {
+    // Check if @cursor/sdk is available
+    try {
+      const { stdout } = await execFileAsync('node', [
+        '-e', 'try { require.resolve("@cursor/sdk"); console.log("ok") } catch { console.log("missing") }'
+      ], { timeout: 5000 });
+
+      if (stdout.trim() !== 'ok') return null;
+
+      // Also check binary for version info
+      try {
+        const { stdout: vOut } = await execFileAsync('cursor-agent', ['--version'], { timeout: 5000 });
+        const match = vOut.match(/(\d+\.\d+\.\d+(?:[-+.\w]*)?)/);
+        return {
+          binary: '@cursor/sdk',
+          version: match ? match[1] : 'unknown',
+          path: 'sdk',
+          tier: 1,
+          protocol: 'sdk',
+        };
+      } catch {
+        return {
+          binary: '@cursor/sdk',
+          version: 'unknown',
+          path: 'sdk',
+          tier: 1,
+          protocol: 'sdk',
+        };
+      }
+    } catch {
+      return null;
+    }
+  }
+}
