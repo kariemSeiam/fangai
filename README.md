@@ -55,7 +55,7 @@
 
 ## Manifesto
 
-The best coding agents in the world — `pi`, `claude`, `aider`, `codex`, `gemini`, `opencode` — share one trait:
+The best coding agents in the world — `pi`, `claude`, `cursor-agent`, `aider`, `codex`, `gemini`, `opencode` — share one trait:
 
 **They work alone.**
 
@@ -102,9 +102,10 @@ That's it. `claude` is now:
 # Wrap multiple agents
 fang wrap "pi --mode rpc"    --port 3001   # persistent JSONL RPC
 fang wrap "claude --print"   --port 3002   # oneshot text stream
-fang wrap "codex --json"     --port 3003   # oneshot JSONL
-fang wrap "opencode run"     --port 3004   # oneshot JSON
-fang wrap "aider --json"     --port 3005   # oneshot JSON mode
+fang wrap "cursor-agent --print --output-format stream-json --yolo --trust" --port 3003   # cursor agent
+fang wrap "codex --json"     --port 3004   # oneshot JSONL
+fang wrap "opencode run"     --port 3005   # oneshot JSON
+fang wrap "aider --json"     --port 3006   # oneshot JSON mode
 
 # Or start them all at once
 fang serve -c fang.yaml
@@ -215,6 +216,7 @@ fang detect
 |:------|:----:|:---------|:-----|:------:|
 | **Pi** | 1 | JSONL RPC | **Persistent** | ✅ |
 | **Claude Code** | 1 | stream-json | Oneshot | ✅ |
+| **Cursor Agent** | 1 | stream-json | Oneshot | ✅ |
 | **Codex CLI** | 1 | JSONL | Oneshot | ✅ |
 | **Gemini CLI** | 2 | ACP (JSON-RPC) | Oneshot | ✅ |
 | **OpenCode** | 2 | JSON output | Oneshot | ✅ |
@@ -226,7 +228,7 @@ fang detect
 <details>
 <summary><strong>Tier System</strong></summary>
 
-- **Tier 1** — Native JSON/JSONL output. Direct event parsing. Zero ambiguity. *(Pi, Claude Code, Codex)*
+- **Tier 1** — Native JSON/JSONL output. Direct event parsing. Zero ambiguity. *(Pi, Claude Code, Cursor Agent, Codex)*
 - **Tier 2** — Structured protocol over stdio. Protocol bridge with known schema. *(Gemini CLI, OpenCode)*
 - **Tier 3** — Text only. Heuristic parsing. Best-effort. *(Aider, generic fallback)*
 
@@ -316,6 +318,11 @@ agents:
     port: 3002
     timeout: 300
 
+  cursor:
+    cli: "cursor-agent --print --output-format stream-json --stream-partial-output --yolo --trust"
+    port: 3003
+    timeout: 300
+
   local:
     cli: "ollama run qwen2.5-coder"
     port: 3005
@@ -360,6 +367,7 @@ packages/
 ├── pi/             @fangai/pi — Pi JSONL RPC adapter
 └── adapters/
     ├── claude/     Claude Code text stream adapter
+    ├── cursor/     Cursor Agent CLI stream-json adapter
     ├── codex/      Codex CLI JSONL adapter
     ├── opencode/   OpenCode JSON output adapter
     ├── aider/      Aider JSON mode adapter
