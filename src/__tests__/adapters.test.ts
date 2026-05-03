@@ -219,11 +219,11 @@ describe('AiderAdapter', () => {
     expect(adapter.mode).toBe('oneshot');
   });
 
-  it('builds args with --message and --yes', () => {
+  it('builds args with --yes and --no-auto-commits', () => {
     const args = adapter.buildArgs(dummyTask, dummyConfig);
-    expect(args).toContain('--message');
     expect(args).toContain('--yes');
     expect(args).toContain('--no-auto-commits');
+    expect(args).toContain('--no-pretty');
   });
 
   it('appends /exit to input', () => {
