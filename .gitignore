@@ -5,3 +5,4 @@ dist/
 .env
 fang.yaml
 project/
+AUDIT-*.md
