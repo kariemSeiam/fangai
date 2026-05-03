@@ -224,10 +224,15 @@ export class ClaudeAdapter implements AgentAdapter {
   ];
 
   buildArgs(task: AgentTask, config: FangConfig): string[] {
-    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', '10'];
+    const maxTurns = config.agentFlags?.find((f, i, arr) => arr[i - 1] === '--max-turns') ?? '10';
+    const args = ['-p', '--output-format', 'stream-json', '--verbose', '--max-turns', maxTurns];
     if (task.context?.workdir) args.push('--cwd', task.context.workdir);
     else if (config.workdir) args.push('--cwd', config.workdir);
-    if (config.agentFlags?.length) args.push(...config.agentFlags);
+    if (config.agentFlags?.length) {
+      // Skip --max-turns from agentFlags since we already set it
+      const filtered = config.agentFlags.filter((f, i, arr) => f !== '--max-turns' && arr[i - 1] !== '--max-turns');
+      args.push(...filtered);
+    }
     return args;
   }
 
@@ -346,7 +351,7 @@ export class AiderAdapter implements AgentAdapter {
   ];
 
   buildArgs(_task: AgentTask, _config: FangConfig): string[] {
-    return ['--message', 'CMD', '--yes', '--no-auto-commits', '--no-pretty'];
+    return ['--yes', '--no-auto-commits', '--no-pretty'];
   }
 
   formatInput(task: AgentTask): string {
@@ -448,30 +453,55 @@ export class GeminiAdapter implements AgentAdapter {
     { id: 'reasoning', name: 'Reasoning', tags: ['reasoning', 'analysis'] },
   ];
 
+  /** Monotonic counter per-instance for JSON-RPC request IDs. */
+  private rpcId = 0;
+
   buildArgs(_task: AgentTask, _config: FangConfig): string[] {
     return ['--acp'];
   }
 
   formatInput(task: AgentTask): string {
     return JSON.stringify({
-      jsonrpc: '2.0', id: 1, method: 'session/prompt',
+      jsonrpc: '2.0', id: ++this.rpcId, method: 'session/prompt',
       params: { prompt: task.message },
     }) + '\n';
   }
-
-  private sessionId: string | null = null;
 
   parseLine(line: string): AdapterEvent[] {
     if (!line.trim()) return [];
     try {
       const obj = JSON.parse(line);
+
+      // Session established
       if (obj.method === 'session/new' && obj.result?.sessionId) {
-        this.sessionId = obj.result.sessionId;
         return [{ type: 'status', state: 'working' }];
       }
+
+      // ACP completion signals — session/prompt response with result
+      if (obj.id != null && obj.result != null) {
+        // Final result from a prompt — check for completion markers
+        const res = obj.result;
+        if (res.status === 'complete' || res.done === true || res.finished === true) {
+          const text = res.text || (typeof res.content === 'string' ? res.content : '');
+          const events: AdapterEvent[] = [];
+          if (text) events.push({ type: 'text-delta', text });
+          events.push({ type: 'status', state: 'completed' });
+          return events;
+        }
+        // Partial result with text
+        if (res.text) return [{ type: 'text-delta', text: res.text }];
+        if (res.content) return [{ type: 'text-delta', text: typeof res.content === 'string' ? res.content : JSON.stringify(res.content) }];
+        // Result object present but no text — still mark working
+        return [{ type: 'status', state: 'working' }];
+      }
+
+      // Streaming event with content
       if (obj.result?.text) return [{ type: 'text-delta', text: obj.result.text }];
       if (obj.result?.content) return [{ type: 'text-delta', text: typeof obj.result.content === 'string' ? obj.result.content : JSON.stringify(obj.result.content) }];
+
+      // Error
       if (obj.error) return [{ type: 'error', message: obj.error.message || 'ACP error' }];
+
       return [];
     } catch {
       return [{ type: 'text-delta', text: line.trim() }];
@@ -521,7 +551,7 @@ export class OpenCodeAdapter implements AgentAdapter {
       const obj = JSON.parse(line);
       const text = obj.text || obj.content || obj.part?.text || '';
       if (obj.type === 'text' || obj.type === 'response') return [{ type: 'text-delta', text }];
-      if (obj.type === 'content') return [{ type: 'text-delta', text: obj.text || '' }];
+      if (obj.type === 'content') return [{ type: 'text-delta', text }];
       if (obj.type === 'done' || obj.type === 'complete' || obj.type === 'step_finish') return [{ type: 'status', state: 'completed' }];
       if (obj.type === 'error') return [{ type: 'error', message: obj.message || obj.part?.message || 'OpenCode error' }];
       return [];
@@ -583,15 +613,30 @@ export const ALL_ADAPTERS: AgentAdapter[] = [
   new OpenCodeAdapter(),
 ];
 
-export function detectAdapter(cli: string): AgentAdapter {
+import { CursorAgentAdapter } from './cursor-adapter.ts';
+
+/** All adapters including the new CursorAgentAdapter */
+export const ALL_ADAPTERS_V2: AgentAdapter[] = [
+  ...ALL_ADAPTERS,
+  new CursorAgentAdapter(),
+];
+
+export function detectAdapter(cli: string, useV2 = false): AgentAdapter {
+  const adapters = useV2 ? ALL_ADAPTERS_V2 : ALL_ADAPTERS;
   // Match binary name bounded by non-hyphen word boundaries or path separators.
   // e.g. "some-pi-wrapper" should NOT match "pi", but "pi" and "/usr/bin/pi" should.
-  for (const adapter of ALL_ADAPTERS) {
+  for (const adapter of adapters) {
     if (!adapter.binary) continue;
     // Allow path separators (/) and start/end of string as boundaries,
     // but NOT hyphens — they're part of command names.
     const re = new RegExp('(?:^|[/\\s])' + escapeRegex(adapter.binary) + '(?:$|[/\\s])');
     if (re.test(cli)) return adapter;
   }
+
+  // Fallback: try CursorAgentAdapter for 'cursor-agent' or 'agent' with --print
+  if (cli.includes('cursor-agent') || (cli.includes('agent') && cli.includes('--print'))) {
+    return new CursorAgentAdapter();
+  }
+
   return new GenericAdapter(cli);
 }
