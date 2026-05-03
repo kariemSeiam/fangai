@@ -16,6 +16,7 @@ import type { Request, Response, NextFunction } from 'express';
 import express from 'express';
 import {
   type AgentAdapter, type FangConfig, type AdapterEvent,
+  type PersistentAttachableAdapter,
   ProcessManager, PersistentProcess,
 } from './core.ts';
 import { CursorAgentAdapter, CursorSessionStore, type CursorSession } from './cursor-adapter.ts';
@@ -158,6 +159,8 @@ export class BridgeExecutor implements AgentExecutor {
       return;
     }
 
+    await this.attachPersistentHooks();
+
     let accumulated = '';
     let settled = false;
 
@@ -175,11 +178,78 @@ export class BridgeExecutor implements AgentExecutor {
       if (settled) return;
       const events = adapter.parseLine(line);
       for (const ev of events) {
-        if (ev.type === 'text-delta' && ev.text) {
+        if ((ev.type === 'text-delta' || ev.type === 'thinking') && ev.text) {
           accumulated += ev.text;
           bus.publish({
             kind: 'artifact-update', taskId, contextId,
-            artifact: { artifactId: 'stdout', name: 'output', parts: [{ kind: 'text', text: ev.text }] },
+            artifact: {
+              artifactId: ev.type === 'thinking' ? 'pi-thinking' : 'stdout',
+              name: ev.type === 'thinking' ? 'thinking' : 'output',
+              parts: [{ kind: 'text', text: ev.text }],
+            },
+            append: true, lastChunk: false,
+          });
+        }
+        if (ev.type === 'tool-call') {
+          bus.publish({
+            kind: 'artifact-update', taskId, contextId,
+            artifact: {
+              artifactId: 'pi-agent-tool-call',
+              name: 'tool-call',
+              parts: [{ kind: 'text', text: `[${ev.tool}] ${JSON.stringify(ev.input ?? {})}` }],
+            },
+            append: true, lastChunk: false,
+          });
+        }
+        if (ev.type === 'tool-result') {
+          bus.publish({
+            kind: 'artifact-update', taskId, contextId,
+            artifact: {
+              artifactId: 'pi-agent-tool-result',
+              name: 'tool-result',
+              parts: [{ kind: 'text', text: `${ev.tool}: ${ev.output}` }],
+            },
+            append: true, lastChunk: false,
+          });
+        }
+        if (ev.type === 'protocol-log') {
+          const detail = ev.detail ? ` ${JSON.stringify(ev.detail)}` : '';
+          bus.publish({
+            kind: 'artifact-update', taskId, contextId,
+            artifact: {
+              artifactId: `pi-protocol-${ev.subtype}`,
+              name: `pi-protocol/${ev.subtype}`,
+              parts: [{ kind: 'text', text: `[pi] ${ev.subtype}${detail}` }],
+            },
+            append: true,
+            lastChunk: false,
+          });
+        }
+        if (ev.type === 'host-tool-request') {
+          bus.publish({
+            kind: 'artifact-update', taskId, contextId,
+            artifact: {
+              artifactId: 'pi-host-tool-request',
+              name: `host-tool/${ev.tool}`,
+              parts: [{
+                kind: 'text',
+                text: `[host_tool_call id=${ev.requestId}] ${ev.tool} ${JSON.stringify(ev.input)}`,
+              }],
+            },
+            append: true, lastChunk: false,
+          });
+        }
+        if (ev.type === 'host-tool-cancel') {
+          bus.publish({
+            kind: 'artifact-update', taskId, contextId,
+            artifact: {
+              artifactId: 'pi-host-tool-cancel',
+              name: 'host-tool-cancel',
+              parts: [{
+                kind: 'text',
+                text: `[host_tool_cancel] cancelId=${ev.cancelId} target=${ev.targetRequestId}`,
+              }],
+            },
             append: true, lastChunk: false,
           });
         }
@@ -223,8 +293,22 @@ export class BridgeExecutor implements AgentExecutor {
   }
 
   async shutdown(): Promise<void> {
+    await this.detachPersistentHooks();
     this.pm.killAll();
     if (this.persistent) await this.persistent.kill();
+    this.persistent = null;
+  }
+
+  /** Wire PiAdapter (or similar) singleton — enables sendCommand/host tools between tasks */
+  private async attachPersistentHooks(): Promise<void> {
+    if (!this.persistent) return;
+    const a = this.adapter as AgentAdapter & Partial<PersistentAttachableAdapter>;
+    if (typeof a.attachPersistent === 'function') await Promise.resolve(a.attachPersistent(this.persistent));
+  }
+
+  private async detachPersistentHooks(): Promise<void> {
+    const a = this.adapter as AgentAdapter & Partial<PersistentAttachableAdapter>;
+    if (typeof a.detachPersistent === 'function') await Promise.resolve(a.detachPersistent());
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
