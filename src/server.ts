@@ -66,6 +66,17 @@ export class BridgeExecutor implements AgentExecutor {
     const adapter = this.adapter;
     const timeout = config.taskTimeout ?? 300;
 
+    // Seed the ResultManager with a task event so it can track this execution.
+    // Without this, status-update/artifact-update events reference an unknown taskId
+    // and ResultManager.currentTask stays null → "no task context found" on completion.
+    bus.publish({
+      kind: 'task',
+      id: taskId,
+      contextId,
+      status: { state: 'working', timestamp: new Date().toISOString() },
+      history: [],
+    });
+
     const [cmd, ...cliArgs] = this.splitCli(config.cli);
     const extraArgs = adapter.buildArgs(task, config);
     let accumulated = '';
@@ -144,6 +155,15 @@ export class BridgeExecutor implements AgentExecutor {
     const config = this.config;
     const adapter = this.adapter;
     const timeout = config.taskTimeout ?? 600;
+
+    // Seed ResultManager — same reason as executeOneshot
+    bus.publish({
+      kind: 'task',
+      id: taskId,
+      contextId,
+      status: { state: 'working', timestamp: new Date().toISOString() },
+      history: [],
+    });
 
     // Ensure persistent process is running
     if (!this.persistent) {
