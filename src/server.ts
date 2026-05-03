@@ -6,9 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { AgentExecutor, RequestContext, ExecutionEventBus } from '@a2a-js/sdk/server';
-import {
-  DefaultRequestHandler, InMemoryTaskStore,
-} from '@a2a-js/sdk/server';
+import { DefaultRequestHandler } from '@a2a-js/sdk/server';
 import {
   agentCardHandler, jsonRpcHandler, restHandler, UserBuilder,
 } from '@a2a-js/sdk/server/express';
@@ -20,6 +18,7 @@ import {
   ProcessManager, PersistentProcess,
 } from './core.ts';
 import { CursorAgentAdapter, CursorSessionStore, type CursorSession } from './cursor-adapter.ts';
+import { FangTaskStore } from './fang-task-store.ts';
 
 // ─── BridgeExecutor ────────────────────────────────────────────────────────
 
@@ -28,10 +27,16 @@ export class BridgeExecutor implements AgentExecutor {
   private persistent: PersistentProcess | null = null;
   private adapter: AgentAdapter;
   private config: FangConfig;
+  /** taskId → contextId for lifecycle + cancel signaling */
+  private contextByTaskId = new Map<string, string>();
 
   constructor(adapter: AgentAdapter, config: FangConfig) {
     this.adapter = adapter;
     this.config = config;
+  }
+
+  private forgetTrackedTask(taskId: string): void {
+    this.contextByTaskId.delete(taskId);
   }
 
   async execute(ctx: RequestContext, bus: ExecutionEventBus): Promise<void> {
@@ -50,6 +55,8 @@ export class BridgeExecutor implements AgentExecutor {
       bus.finished();
       return;
     }
+
+    this.contextByTaskId.set(taskId, contextId);
 
     const task = { id: taskId, message: text, context: { workdir: this.config.workdir } };
 
@@ -110,6 +117,7 @@ export class BridgeExecutor implements AgentExecutor {
             if (ev.type === 'status' && ev.state === 'completed') {
               settled = true;
               clearTimeout(timer);
+              this.forgetTrackedTask(taskId);
               bus.publish({ kind: 'message', messageId: randomUUID(), role: 'agent', parts: [{ kind: 'text', text: accumulated || 'Done' }] });
               bus.finished();
               resolve();
@@ -117,6 +125,7 @@ export class BridgeExecutor implements AgentExecutor {
             if (ev.type === 'error') {
               settled = true;
               clearTimeout(timer);
+              this.forgetTrackedTask(taskId);
               bus.publish({
                 kind: 'status-update', taskId, contextId, final: true,
                 status: { state: 'failed', message: { kind: 'message', role: 'agent', messageId: randomUUID(), parts: [{ kind: 'text', text: ev.message }] }, timestamp: new Date().toISOString() },
@@ -137,8 +146,10 @@ export class BridgeExecutor implements AgentExecutor {
           if (settled) { resolve(); return; }
           settled = true;
           if (code === 0) {
+            this.forgetTrackedTask(taskId);
             bus.publish({ kind: 'message', messageId: randomUUID(), role: 'agent', parts: [{ kind: 'text', text: accumulated || '(no output)' }] });
           } else {
+            this.forgetTrackedTask(taskId);
             bus.publish({ kind: 'message', messageId: randomUUID(), role: 'agent', parts: [{ kind: 'text', text: `Error: exit code ${code}` }] });
           }
           bus.finished();
@@ -277,6 +288,7 @@ export class BridgeExecutor implements AgentExecutor {
           settled = true;
           clearTimeout(timer);
           // Publish final message for sync clients
+          this.forgetTrackedTask(taskId);
           bus.publish({ kind: 'message', messageId: randomUUID(), role: 'agent', parts: [{ kind: 'text', text: accumulated || 'Done' }] });
           bus.finished();
           // Clean up handler after completion
@@ -291,6 +303,7 @@ export class BridgeExecutor implements AgentExecutor {
         if (ev.type === 'error') {
           settled = true;
           clearTimeout(timer);
+          this.forgetTrackedTask(taskId);
           bus.publish({
             kind: 'status-update', taskId, contextId, final: true,
             status: { state: 'failed', message: { kind: 'message', role: 'agent', messageId: randomUUID(), parts: [{ kind: 'text', text: ev.message }] }, timestamp: new Date().toISOString() },
@@ -301,18 +314,81 @@ export class BridgeExecutor implements AgentExecutor {
       }
     });
 
-    // Send the task to the persistent process
-    this.persistent.write(adapter.formatInput(task));
+    // Deferred until this task owns Pi's stdin (`writeWhenActive` buffers if still queued).
+    this.persistent.writeWhenActive(taskId, adapter.formatInput(task));
+  }
+
+  /**
+   * Live Pi queue diagnostics for orchestrators (null unless persistent session exists).
+   */
+  getPersistentQueueInfo(): {
+    persistentQueueDepth: number;
+    persistentActiveTaskId: string | null;
+    persistentQueuedTaskIds: string[];
+  } | null {
+    if (this.adapter.mode !== 'persistent') {
+      return null;
+    }
+    if (this.persistent === null) {
+      return {
+        persistentQueueDepth: 0,
+        persistentActiveTaskId: null,
+        persistentQueuedTaskIds: [],
+      };
+    }
+    return {
+      persistentQueueDepth: this.persistent.getQueueDepth(),
+      persistentActiveTaskId: this.persistent.getActiveTaskId(),
+      persistentQueuedTaskIds: this.persistent.getQueuedTaskIds(),
+    };
   }
 
   async cancelTask(taskId: string, bus: ExecutionEventBus): Promise<void> {
+    const contextId = this.contextByTaskId.get(taskId);
+    const cid = contextId !== undefined ? contextId : '';
+
     this.pm.kill(taskId);
-    if (this.persistent) this.persistent.removeLineHandler(taskId);
-    bus.publish({ kind: 'message', messageId: randomUUID(), role: 'agent', parts: [{ kind: 'text', text: 'Task canceled' }] });
+    if (this.persistent) {
+      this.persistent.removeLineHandler(taskId);
+    }
+
+    const messageId = randomUUID();
+    const cancelMessage =
+      cid !== ''
+        ? {
+            kind: 'message' as const,
+            role: 'agent' as const,
+            messageId,
+            contextId: cid,
+            taskId,
+            parts: [{ kind: 'text' as const, text: 'Task canceled by client.' }],
+          }
+        : {
+            kind: 'message' as const,
+            role: 'agent' as const,
+            messageId,
+            taskId,
+            parts: [{ kind: 'text' as const, text: 'Task canceled by client.' }],
+          };
+
+    bus.publish({
+      kind: 'status-update',
+      taskId,
+      contextId: cid !== '' ? cid : taskId,
+      final: true,
+      status: {
+        state: 'canceled',
+        message: cancelMessage,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    this.forgetTrackedTask(taskId);
     bus.finished();
   }
 
   async shutdown(): Promise<void> {
+    this.contextByTaskId.clear();
     await this.detachPersistentHooks();
     this.pm.killAll();
     if (this.persistent) await this.persistent.kill();
@@ -334,6 +410,7 @@ export class BridgeExecutor implements AgentExecutor {
   // ─── Helpers ───────────────────────────────────────────────────────────
 
   private publishMessage(bus: ExecutionEventBus, taskId: string, contextId: string, text: string) {
+    this.forgetTrackedTask(taskId);
     bus.publish({
       kind: 'status-update', taskId, contextId, final: true,
       status: { state: 'failed', message: { kind: 'message', role: 'agent', messageId: randomUUID(), parts: [{ kind: 'text', text }] }, timestamp: new Date().toISOString() },
@@ -378,7 +455,8 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
   };
 
   const executor = new BridgeExecutor(adapter, { ...rest, port });
-  const requestHandler = new DefaultRequestHandler(agentCard, new InMemoryTaskStore(), executor);
+  const taskStore = new FangTaskStore();
+  const requestHandler = new DefaultRequestHandler(agentCard, taskStore, executor);
 
   return {
     executor,
@@ -400,8 +478,34 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
 
       // Public routes — must be mounted BEFORE auth gate (A2A spec requires public agent card)
       app.use('/.well-known/agent-card.json', agentCardHandler({ agentCardProvider: requestHandler }));
-      app.get('/health', (_req, res) => {
-        res.json({ status: 'ok', agent: name, mode: adapter.mode, tier: adapter.tier });
+      app.get('/health', (_req: Request, res: Response) => {
+        const pq = executor.getPersistentQueueInfo();
+        const base: Record<string, unknown> = {
+          status: 'ok',
+          agent: name,
+          mode: adapter.mode,
+          tier: adapter.tier,
+        };
+        if (pq !== null) {
+          base.persistentQueue = pq;
+        }
+        if (adapter instanceof CursorAgentAdapter) {
+          const cursorAdapter = adapter as CursorAgentAdapter;
+          Object.assign(base, {
+            sessions: cursorAdapter.sessionStore.list().length,
+            activeSession: cursorAdapter.sessionStore.lastSession,
+            defaultModel: cursorAdapter.defaultModel,
+            capabilities: {
+              multiTurn: true,
+              sessionManagement: true,
+              modelSelection: true,
+              worktreeIsolation: cursorAdapter.useWorktrees,
+              streaming: true,
+              planMode: true,
+            },
+          });
+        }
+        res.json(base);
       });
 
       // Auth gate — applied to all routes below this point only
@@ -481,27 +585,6 @@ export function createFangServer(config: FangConfig & { adapter: AgentAdapter })
           } catch (err: any) {
             res.status(500).json({ error: { message: err.message } });
           }
-        });
-
-        // Enhanced health with session info
-        app.get('/health', (_req: Request, res: Response) => {
-          res.json({
-            status: 'ok',
-            agent: name,
-            mode: adapter.mode,
-            tier: adapter.tier,
-            sessions: cursorAdapter.sessionStore.list().length,
-            activeSession: cursorAdapter.sessionStore.lastSession,
-            defaultModel: cursorAdapter.defaultModel,
-            capabilities: {
-              multiTurn: true,
-              sessionManagement: true,
-              modelSelection: true,
-              worktreeIsolation: cursorAdapter.useWorktrees,
-              streaming: true,
-              planMode: true,
-            },
-          });
         });
       }
     },

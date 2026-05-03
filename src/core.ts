@@ -259,6 +259,11 @@ export class PersistentProcess {
   /** The currently active task ID (receiving stdout lines). */
   private activeTaskId: string | null = null;
 
+  /** Deferred stdin payloads for queued tasks (`writeWhenActive` only — not RPC `write`). */
+  private writeBuffer = new Map<string, string[]>();
+  /** Notify waiters once a task becomes active and buffered stdin has been flushed. */
+  private writeWaiters = new Map<string, Array<() => void>>();
+
   /** Correlates `{ type:'response', id }` frames to pending `sendRpcCommand` awaits. */
   private pendingResponses = new Map<string, {
     settle: (r: RpcParsedResponse | null) => void;
@@ -447,6 +452,7 @@ export class PersistentProcess {
 
   /** Reset Pi-side waiters/maps when spawning a replacement process after death. */
   private resetStatefulSession(): void {
+    this.clearDeferredWritesState();
     for (const { reject } of this.readyWaiters) {
       try { reject(new Error('Persistent process respawn — ready wait aborted')); } catch { /* noop */ }
     }
@@ -459,6 +465,79 @@ export class PersistentProcess {
     this.pendingResponses.clear();
     this.readyEmitted = false;
     this.hostAbortByRequestId.clear();
+  }
+
+  private clearDeferredWritesState(): void {
+    this.writeBuffer.clear();
+    this.writeWaiters.clear();
+  }
+
+  private flushBufferedWrites(taskId: string): void {
+    const chunks = this.writeBuffer.get(taskId);
+    if (chunks === undefined || chunks.length === 0) return;
+    for (let i = 0; i < chunks.length; i++) {
+      this.write(chunks[i]);
+    }
+    this.writeBuffer.delete(taskId);
+  }
+
+  private resolveWriteWaiters(taskId: string): void {
+    const ws = this.writeWaiters.get(taskId);
+    if (ws === undefined || ws.length === 0) return;
+    this.writeWaiters.delete(taskId);
+    for (let i = 0; i < ws.length; i++) {
+      try {
+        ws[i]();
+      } catch {
+        /* noop */
+      }
+    }
+  }
+
+  /** After `activeTaskId` is assigned, flush stdin buffer then signal waiters. */
+  private promoteActivatedTask(taskId: string): void {
+    this.flushBufferedWrites(taskId);
+    this.resolveWriteWaiters(taskId);
+  }
+
+  /**
+   * Task prompt input — writes immediately only when `taskId` is active.
+   * Queued tasks buffer until promoted (avoid interleaving with Pi busy on another prompt).
+   */
+  writeWhenActive(taskId: string, data: string): void {
+    if (!this.proc) return;
+    if (this.activeTaskId === taskId) {
+      this.write(data);
+      return;
+    }
+    let chunks = this.writeBuffer.get(taskId);
+    if (chunks === undefined) {
+      chunks = [];
+      this.writeBuffer.set(taskId, chunks);
+    }
+    chunks.push(data);
+  }
+
+  getQueueDepth(): number {
+    return this.getQueuedTaskIds().length;
+  }
+
+  getActiveTaskId(): string | null {
+    return this.activeTaskId;
+  }
+
+  /** Task IDs ordered after the active slot (exclusive of `activeTaskId`). */
+  getQueuedTaskIds(): string[] {
+    if (this.activeTaskId === null) {
+      return this.taskQueue.slice();
+    }
+    const out: string[] = [];
+    for (let i = 0; i < this.taskQueue.length; i++) {
+      if (this.taskQueue[i] !== this.activeTaskId) {
+        out.push(this.taskQueue[i]);
+      }
+    }
+    return out;
   }
 
   private routeLineToActiveTask(line: string): void {
@@ -496,6 +575,7 @@ export class PersistentProcess {
     if (!this.activeTaskId && this.taskQueue.length === 0) {
       this.activeTaskId = taskId;
       this.taskQueue.push(taskId);
+      this.promoteActivatedTask(taskId);
     } else {
       this.taskQueue.push(taskId);
     }
@@ -504,6 +584,8 @@ export class PersistentProcess {
   /** Remove a task's handler (e.g., after completion). */
   removeLineHandler(taskId: string): void {
     this.taskHandlers.delete(taskId);
+    this.writeBuffer.delete(taskId);
+    this.writeWaiters.delete(taskId);
     this.taskQueue = this.taskQueue.filter(id => id !== taskId);
     if (this.activeTaskId === taskId) {
       this.activeTaskId = null;
@@ -518,6 +600,7 @@ export class PersistentProcess {
       const next = this.taskQueue[0];
       if (this.taskHandlers.has(next)) {
         this.activeTaskId = next;
+        this.promoteActivatedTask(next);
         return;
       }
       // Handler was removed but task still in queue — skip
@@ -565,6 +648,7 @@ export class PersistentProcess {
       }
       this.proc = null;
       this.activeTaskId = null;
+      this.clearDeferredWritesState();
     });
 
     await new Promise<void>((resolve) => {
@@ -622,6 +706,7 @@ export class PersistentProcess {
       this.proc.kill('SIGTERM');
       this.proc = null;
       this.activeTaskId = null;
+      this.clearDeferredWritesState();
     }
   }
 
