@@ -36,7 +36,8 @@ export class FangClient {
     return this.sendStream(message, opts);
   }
 
-  async sendStream(message: string, opts?: { contextId?: string; onProgress?: (text: string) => void }): Promise<TaskResult> {
+  async sendStream(message: string, opts?: { contextId?: string; onProgress?: (text: string) => void; timeout?: number }): Promise<TaskResult> {
+    const timeoutMs = opts?.timeout ?? 300_000; // 5 min default
     const res = await fetch(`${this.baseUrl}/a2a/jsonrpc`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -50,6 +51,7 @@ export class FangClient {
           },
         },
       }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     const contentType = res.headers.get('content-type') || '';

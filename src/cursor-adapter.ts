@@ -268,6 +268,9 @@ export class CursorAgentAdapter implements AgentAdapter {
 
       // ── Assistant text ──────────────────────────────────────────────
       case 'assistant': {
+        // Skip the final consolidated assistant event (no timestamp_ms) — 
+        // we already streamed the partials. Only emit streaming deltas.
+        if (!obj.timestamp_ms) return [];
         const content = obj.message?.content;
         if (!Array.isArray(content)) return [];
 

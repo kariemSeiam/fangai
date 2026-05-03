@@ -33,7 +33,7 @@ describe("callJsonRpc", () => {
     );
     expect(r).toEqual({ done: true });
     expect(fetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:3001/a2a",
+      "http://127.0.0.1:3001/a2a/jsonrpc",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,7 +48,7 @@ describe("callJsonRpc", () => {
 
     await callJsonRpc("http://localhost:1/", "ping", {}, { apiKey: "secret" });
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:1/a2a",
+      "http://localhost:1/a2a/jsonrpc",
       expect.objectContaining({
         headers: expect.objectContaining({
           "Content-Type": "application/json",

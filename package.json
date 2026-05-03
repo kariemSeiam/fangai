@@ -1,6 +1,6 @@
 {
   "name": "fang",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "bin": {
     "fang": "src/cli.ts"
@@ -23,9 +23,9 @@
   "scripts": {
     "start": "node --experimental-strip-types src/cli.ts",
     "dev": "node --experimental-strip-types src/cli.ts",
-    "fang": "node ./packages/cli/dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@a2a-js/sdk": "^0.3.13",
@@ -42,7 +42,6 @@
     "@fangai/pi": "workspace:*",
     "@types/express": "^5.0.6",
     "@types/node": "^22.19.17",
-    "@types/which": "^3.0.0",
     "typescript": "^5.4.0",
     "vitest": "^3.2.4"
   },
